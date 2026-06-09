@@ -27,7 +27,7 @@
     ul.accounts li.active { border-color:var(--accent); background:#1a2030; }
     ul.accounts li .uname { font-weight:600; }
     ul.accounts li .meta { font-size:12px; color:var(--muted); }
-    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+    .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); gap:10px; margin-bottom:16px; }
     .stat { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; }
     .stat .label { font-size:11px; color:var(--muted); text-transform:uppercase; }
     .stat .value { font-size:20px; font-weight:700; margin-top:4px; }
@@ -73,6 +73,7 @@
           <option value="30">Forecast 30</option>
         </select>
         <button class="ghost" id="collectBtn">Collect now</button>
+        <button class="ghost" id="exportBtn" title="Download the current series, moving average, EMA and forecast as CSV">Export CSV</button>
       </div>
       <div class="stats" id="stats"></div>
       <div class="panel"><canvas id="chart"></canvas></div>
@@ -82,7 +83,7 @@
 
 <script>
 const api = (p, opts) => fetch(p, opts).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
-let state = { accounts: [], selected: null, metrics: [] };
+let state = { accounts: [], selected: null, metrics: [], data: null };
 
 async function loadAccounts() {
   state.accounts = await api('/api/accounts');
@@ -120,6 +121,7 @@ async function refresh() {
   let data;
   try { data = await api(`/api/analytics/${state.selected}?metric=${metric}&freq=${freq}&horizon=${horizon}`); }
   catch (e) { document.getElementById('stats').innerHTML = `<div class="empty">${e.detail||'error'}</div>`; return; }
+  state.data = data;
 
   const g = data.growth;
   const trendCls = data.trend==='rising' ? 'good' : data.trend==='falling' ? 'bad' : '';
@@ -127,11 +129,14 @@ async function refresh() {
     <div class="stat"><div class="label">Current</div><div class="value">${fmt(g.current)}</div></div>
     <div class="stat"><div class="label">Change</div><div class="value ${g.absolute_change>=0?'good':'bad'}">${g.percent_change==null?'–':fmt(g.percent_change)+'%'}</div></div>
     <div class="stat"><div class="label">Momentum</div><div class="value ${data.latest_momentum_pct>=0?'good':'bad'}">${data.latest_momentum_pct==null?'–':fmt(data.latest_momentum_pct)+'%'}</div></div>
+    <div class="stat"><div class="label">Avg daily</div><div class="value ${g.avg_daily_growth>=0?'good':'bad'}">${g.avg_daily_growth==null?'–':fmt(g.avg_daily_growth)}</div></div>
+    <div class="stat"><div class="label">CAGR / day</div><div class="value ${g.cagr_daily_pct>=0?'good':'bad'}">${g.cagr_daily_pct==null?'–':fmt(g.cagr_daily_pct)+'%'}</div></div>
     <div class="stat"><div class="label">Trend</div><div class="value ${trendCls}">${data.trend}</div></div>`;
 
   const labels = data.series.map(p => p.t.slice(0,10)).concat(data.forecast.timestamps.map(t => t.slice(0,10)));
   const actual = data.series.map(p => p.v).concat(data.forecast.timestamps.map(()=>null));
   const ma = data.moving_average.map(p => p.v).concat(data.forecast.timestamps.map(()=>null));
+  const ema = data.ema.map(p => p.v).concat(data.forecast.timestamps.map(()=>null));
   const pad = data.series.map(()=>null);
   const forecast = pad.concat(data.forecast.values);
   if (data.series.length) forecast[data.series.length-1] = data.series.at(-1).v; // connect line
@@ -139,6 +144,7 @@ async function refresh() {
   const ds = [
     { label: metric, data: actual, borderColor:'#6c8cff', backgroundColor:'rgba(108,140,255,.1)', tension:.25, pointRadius:2, fill:true },
     { label: 'moving avg', data: ma, borderColor:'#37d399', borderDash:[4,4], pointRadius:0, tension:.25 },
+    { label: 'EMA', data: ema, borderColor:'#c084fc', borderDash:[2,3], pointRadius:0, tension:.25 },
     { label: 'forecast', data: forecast, borderColor:'#ffb454', borderDash:[6,3], pointRadius:0, tension:.15 },
   ];
   if (chart) chart.destroy();
@@ -172,6 +178,26 @@ document.getElementById('collectBtn').onclick = async () => {
   try { await api(`/api/accounts/${state.selected}/collect`, {method:'POST'}); await loadAccounts(); await refresh(); }
   catch(e){ alert(e.detail||'collection failed'); }
   finally { btn.textContent='Collect now'; btn.disabled=false; }
+};
+document.getElementById('exportBtn').onclick = () => {
+  const d = state.data;
+  if (!d) return alert('Select an account first.');
+  const at = t => (t||'').slice(0,10);
+  const byT = arr => Object.fromEntries((arr||[]).map(p => [p.t, p.v]));
+  const ma = byT(d.moving_average), ema = byT(d.ema), fc = {};
+  d.forecast.timestamps.forEach((t,i) => { fc[t] = d.forecast.values[i]; });
+  const num = v => (v==null ? '' : v);
+  const rows = [['date','actual','moving_avg','ema','forecast']];
+  for (const p of d.series) rows.push([at(p.t), num(p.v), num(ma[p.t]), num(ema[p.t]), '']);
+  for (const t of d.forecast.timestamps) rows.push([at(t), '', '', '', num(fc[t])]);
+  const csv = rows.map(r => r.join(',')).join('\n');
+  const acc = (d.account && d.account.username) || 'account';
+  const blob = new Blob([csv], {type:'text/csv'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `${acc}_${d.name}_${d.freq}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
 };
 ['metricSelect','freqSelect','horizonSelect'].forEach(id => document.getElementById(id).onchange = refresh);
 

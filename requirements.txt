@@ -9,5 +9,9 @@ python-dotenv>=1.0,<2.0
 numpy>=1.26
 pandas>=2.2
 
+# Postgres driver (psycopg 3) — used when DATABASE_URL points at Postgres in
+# production; SQLite (the default) needs no extra driver.
+psycopg[binary]>=3.1,<4.0
+
 # dev / test
 pytest>=8.0

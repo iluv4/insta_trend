@@ -126,9 +126,48 @@ network access required.
 
 ## Deployment
 
+The app is a standard FastAPI + Docker service — **no Node.js or build step**
+(the dashboard is a single static page using Chart.js from a CDN). It listens
+on `$PORT` if the host sets one, otherwise `8000`.
+
+### Docker (any host)
+
 ```bash
 docker build -t insta-trend-monitor .
 docker run -p 8000:8000 --env-file .env insta-trend-monitor
+# → http://localhost:8000
 ```
 
-For production set `DATABASE_URL` to PostgreSQL (e.g. `postgresql+psycopg://…`).
+### Render (one click, free tier)
+
+A [`render.yaml`](render.yaml) Blueprint is included, so deployment is:
+
+1. Push this repo to GitHub.
+2. In Render, **New + → Blueprint**, and select the repo.
+3. Render builds the Dockerfile, provisions a free Postgres database, and wires
+   `DATABASE_URL` automatically. Add your `RAPIDAPI_KEY` in the dashboard for
+   live collection (optional — the app runs on seeded/demo data without it).
+4. Open the generated `*.onrender.com` URL.
+
+The `/api/health` endpoint is configured as the health check.
+
+### Other hosts (Fly.io, Railway, Cloud Run, …)
+
+Any platform that runs a Dockerfile works the same way — point it at this repo,
+set the env vars from [`.env.example`](.env.example), and expose the port. These
+hosts inject `$PORT`, which the container already honours.
+
+### Production notes
+
+- **Database:** SQLite (the default) lives on the container's ephemeral disk and
+  is wiped on every redeploy. For anything persistent set `DATABASE_URL` to
+  Postgres — e.g. `postgresql://user:pass@host:5432/db`. The app rewrites
+  `postgres://` / `postgresql://` URLs to the bundled psycopg 3 driver
+  automatically, so the connection string from most managed Postgres providers
+  works as-is.
+- **Scheduler:** `ENABLE_SCHEDULER=true` runs in-process background collection
+  every `COLLECT_INTERVAL_MINUTES`. On multi-instance deployments, run the
+  scheduler on a single worker (or set it to `false` and trigger collection out
+  of band) to avoid duplicate snapshots.
+- **Live data:** without `RAPIDAPI_KEY`, `POST /collect` returns 502; seed
+  synthetic data with `python -m scripts.seed_demo` to explore the dashboard.
