@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Instagram Reference Monitor</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    :root { --bg:#0f1116; --panel:#171a21; --border:#262b36; --txt:#e8eaed; --muted:#9aa3b2; --accent:#6c8cff; --good:#37d399; --bad:#ff6b6b; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Apple SD Gothic Neo",sans-serif; background:var(--bg); color:var(--txt); }
+    header { padding:18px 24px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:12px; }
+    header h1 { font-size:18px; margin:0; }
+    header .pill { font-size:12px; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:3px 10px; }
+    main { display:grid; grid-template-columns:320px 1fr; gap:20px; padding:20px 24px; }
+    .panel { background:var(--panel); border:1px solid var(--border); border-radius:12px; padding:16px; }
+    h2 { font-size:13px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); margin:0 0 12px; }
+    input, select, button { font:inherit; }
+    input, select { width:100%; padding:9px 10px; background:#0e1117; border:1px solid var(--border); border-radius:8px; color:var(--txt); margin-bottom:8px; }
+    button { cursor:pointer; border:none; border-radius:8px; padding:9px 12px; background:var(--accent); color:#fff; font-weight:600; }
+    button.ghost { background:transparent; border:1px solid var(--border); color:var(--txt); }
+    button.danger { background:transparent; border:1px solid var(--border); color:var(--bad); padding:4px 8px; font-size:12px; }
+    .row { display:flex; gap:8px; }
+    .row > * { flex:1; }
+    ul.accounts { list-style:none; padding:0; margin:12px 0 0; }
+    ul.accounts li { display:flex; align-items:center; justify-content:space-between; padding:9px 10px; border:1px solid var(--border); border-radius:8px; margin-bottom:6px; cursor:pointer; }
+    ul.accounts li.active { border-color:var(--accent); background:#1a2030; }
+    ul.accounts li .uname { font-weight:600; }
+    ul.accounts li .meta { font-size:12px; color:var(--muted); }
+    .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:16px; }
+    .stat { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:12px; }
+    .stat .label { font-size:11px; color:var(--muted); text-transform:uppercase; }
+    .stat .value { font-size:20px; font-weight:700; margin-top:4px; }
+    .stat .value.good { color:var(--good); } .stat .value.bad { color:var(--bad); }
+    .controls { display:flex; gap:8px; align-items:center; margin-bottom:14px; }
+    .controls select { width:auto; margin:0; }
+    .anomalies { margin-top:14px; font-size:13px; }
+    .anomalies .a { padding:6px 10px; border-left:3px solid var(--bad); background:#1a1418; border-radius:4px; margin-bottom:6px; }
+    .anomalies .a.spike { border-left-color:var(--good); background:#13201a; }
+    .empty { color:var(--muted); font-size:13px; padding:8px 0; }
+    canvas { max-height:340px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📈 Instagram Reference Monitor</h1>
+    <span class="pill">time-series analytics</span>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>Tracked accounts</h2>
+      <div class="row">
+        <input id="newUsername" placeholder="username (no @)" />
+      </div>
+      <div class="row">
+        <input id="newLabel" placeholder="label (optional)" />
+        <button id="addBtn">Add</button>
+      </div>
+      <ul class="accounts" id="accountList"></ul>
+    </section>
+
+    <section>
+      <div class="controls">
+        <select id="metricSelect"></select>
+        <select id="freqSelect">
+          <option value="1D">Daily</option>
+          <option value="12H">12-hourly</option>
+          <option value="1W">Weekly</option>
+        </select>
+        <select id="horizonSelect">
+          <option value="7">Forecast 7</option>
+          <option value="14">Forecast 14</option>
+          <option value="30">Forecast 30</option>
+        </select>
+        <button class="ghost" id="collectBtn">Collect now</button>
+      </div>
+      <div class="stats" id="stats"></div>
+      <div class="panel"><canvas id="chart"></canvas></div>
+      <div class="panel anomalies" id="anomalies"></div>
+    </section>
+  </main>
+
+<script>
+const api = (p, opts) => fetch(p, opts).then(r => r.ok ? r.json() : r.json().then(e => Promise.reject(e)));
+let state = { accounts: [], selected: null, metrics: [] };
+
+async function loadAccounts() {
+  state.accounts = await api('/api/accounts');
+  const ul = document.getElementById('accountList');
+  ul.innerHTML = '';
+  if (!state.accounts.length) ul.innerHTML = '<div class="empty">No accounts yet. Add one above.</div>';
+  for (const a of state.accounts) {
+    const li = document.createElement('li');
+    if (state.selected === a.id) li.classList.add('active');
+    li.innerHTML = `<span><span class="uname">@${a.username}</span><br><span class="meta">${a.snapshot_count} snapshots${a.label ? ' · ' + a.label : ''}</span></span>`;
+    const del = document.createElement('button');
+    del.className = 'danger'; del.textContent = 'remove';
+    del.onclick = async (e) => { e.stopPropagation(); await fetch(`/api/accounts/${a.id}`, {method:'DELETE'}); if (state.selected===a.id) state.selected=null; loadAccounts(); };
+    li.appendChild(del);
+    li.onclick = () => { state.selected = a.id; loadAccounts(); refresh(); };
+    ul.appendChild(li);
+  }
+}
+
+async function loadMetrics() {
+  const { metrics } = await api('/api/analytics/metrics');
+  state.metrics = metrics;
+  const sel = document.getElementById('metricSelect');
+  sel.innerHTML = metrics.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+let chart;
+function fmt(n) { return n==null ? '–' : Number(n).toLocaleString(undefined,{maximumFractionDigits:2}); }
+
+async function refresh() {
+  if (!state.selected) return;
+  const metric = document.getElementById('metricSelect').value;
+  const freq = document.getElementById('freqSelect').value;
+  const horizon = document.getElementById('horizonSelect').value;
+  let data;
+  try { data = await api(`/api/analytics/${state.selected}?metric=${metric}&freq=${freq}&horizon=${horizon}`); }
+  catch (e) { document.getElementById('stats').innerHTML = `<div class="empty">${e.detail||'error'}</div>`; return; }
+
+  const g = data.growth;
+  const trendCls = data.trend==='rising' ? 'good' : data.trend==='falling' ? 'bad' : '';
+  document.getElementById('stats').innerHTML = `
+    <div class="stat"><div class="label">Current</div><div class="value">${fmt(g.current)}</div></div>
+    <div class="stat"><div class="label">Change</div><div class="value ${g.absolute_change>=0?'good':'bad'}">${g.percent_change==null?'–':fmt(g.percent_change)+'%'}</div></div>
+    <div class="stat"><div class="label">Momentum</div><div class="value ${data.latest_momentum_pct>=0?'good':'bad'}">${data.latest_momentum_pct==null?'–':fmt(data.latest_momentum_pct)+'%'}</div></div>
+    <div class="stat"><div class="label">Trend</div><div class="value ${trendCls}">${data.trend}</div></div>`;
+
+  const labels = data.series.map(p => p.t.slice(0,10)).concat(data.forecast.timestamps.map(t => t.slice(0,10)));
+  const actual = data.series.map(p => p.v).concat(data.forecast.timestamps.map(()=>null));
+  const ma = data.moving_average.map(p => p.v).concat(data.forecast.timestamps.map(()=>null));
+  const pad = data.series.map(()=>null);
+  const forecast = pad.concat(data.forecast.values);
+  if (data.series.length) forecast[data.series.length-1] = data.series.at(-1).v; // connect line
+
+  const ds = [
+    { label: metric, data: actual, borderColor:'#6c8cff', backgroundColor:'rgba(108,140,255,.1)', tension:.25, pointRadius:2, fill:true },
+    { label: 'moving avg', data: ma, borderColor:'#37d399', borderDash:[4,4], pointRadius:0, tension:.25 },
+    { label: 'forecast', data: forecast, borderColor:'#ffb454', borderDash:[6,3], pointRadius:0, tension:.15 },
+  ];
+  if (chart) chart.destroy();
+  chart = new Chart(document.getElementById('chart'), {
+    type:'line',
+    data:{ labels, datasets:ds },
+    options:{ responsive:true, interaction:{mode:'index',intersect:false},
+      plugins:{ legend:{labels:{color:'#9aa3b2'}} },
+      scales:{ x:{ ticks:{color:'#9aa3b2',maxTicksLimit:10}, grid:{color:'#1e2430'} },
+               y:{ ticks:{color:'#9aa3b2'}, grid:{color:'#1e2430'} } } }
+  });
+
+  const aDiv = document.getElementById('anomalies');
+  if (!data.anomalies.length) { aDiv.innerHTML = '<h2>Anomalies</h2><div class="empty">None detected.</div>'; }
+  else aDiv.innerHTML = '<h2>Anomalies</h2>' + data.anomalies.map(a =>
+    `<div class="a ${a.direction}">${a.direction==='spike'?'▲':'▼'} ${a.timestamp.slice(0,10)} · value ${fmt(a.value)} · z=${fmt(a.zscore)}</div>`).join('');
+}
+
+document.getElementById('addBtn').onclick = async () => {
+  const username = document.getElementById('newUsername').value.trim();
+  const label = document.getElementById('newLabel').value.trim();
+  if (!username) return;
+  try { await api('/api/accounts', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,label})}); }
+  catch(e){ alert(e.detail||'failed'); return; }
+  document.getElementById('newUsername').value=''; document.getElementById('newLabel').value='';
+  loadAccounts();
+};
+document.getElementById('collectBtn').onclick = async () => {
+  if (!state.selected) return alert('Select an account first.');
+  const btn = document.getElementById('collectBtn'); btn.textContent='Collecting…'; btn.disabled=true;
+  try { await api(`/api/accounts/${state.selected}/collect`, {method:'POST'}); await loadAccounts(); await refresh(); }
+  catch(e){ alert(e.detail||'collection failed'); }
+  finally { btn.textContent='Collect now'; btn.disabled=false; }
+};
+['metricSelect','freqSelect','horizonSelect'].forEach(id => document.getElementById(id).onchange = refresh);
+
+loadMetrics().then(loadAccounts);
+</script>
+</body>
+</html>
