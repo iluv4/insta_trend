@@ -1,0 +1,2 @@
+# Runtime dependencies for the Streamlit app (used by Streamlit Community Cloud).
+streamlit>=1.40

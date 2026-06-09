@@ -36,10 +36,45 @@ for trend in rank_trends(posts):
 `rank_trends` scores each hashtag as `count + like_weight * total_likes`, so
 frequency is the primary signal and engagement is a tunable tie-breaker.
 
+## Web app (visualization)
+
+An interactive [Streamlit](https://streamlit.io) app (`app.py`) lets anyone
+paste posts, tune the like weight, and see ranked hashtags as a table and bar
+chart — no Node.js required.
+
+```bash
+pip install -e ".[app]"   # or: pip install -r requirements.txt
+streamlit run app.py
+```
+
+Then open http://localhost:8501. Input format is one post per line, with an
+optional `| <likes>` suffix:
+
+```
+great #sunset today | 320
+late night #coffee #devlife | 95
+```
+
+### Deploy
+
+The app is pure Python, so the simplest free hosting is **Streamlit Community
+Cloud**:
+
+1. Push this repo to GitHub (already the case here).
+2. Go to https://share.streamlit.io and sign in with GitHub.
+3. Click **New app**, pick this repo/branch, and set the main file to `app.py`.
+4. Deploy — Streamlit installs from `requirements.txt` and gives you a public
+   `*.streamlit.app` URL anyone can use.
+
+Other options (same `streamlit run app.py` entrypoint) include Hugging Face
+Spaces (Streamlit SDK), Render, or any container host.
+
 ## Project layout
 
 ```
 src/insta_trend/   # package source
   trends.py        # functional core: extract_hashtags, rank_trends
+app.py             # Streamlit web app (visualization layer)
+requirements.txt   # runtime deps for deployment
 tests/             # pytest suite
 ```
