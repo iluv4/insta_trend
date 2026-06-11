@@ -73,6 +73,7 @@
           <option value="30">Forecast 30</option>
         </select>
         <button class="ghost" id="collectBtn">Collect now</button>
+        <button class="ghost" id="backfillBtn" title="Generate 60 days of synthetic history ending at the earliest real snapshot (demo)">Backfill 60d</button>
         <button class="ghost" id="exportBtn" title="Download the current series, moving average, EMA and forecast as CSV">Export CSV</button>
       </div>
       <div class="stats" id="stats"></div>
@@ -178,6 +179,17 @@ document.getElementById('collectBtn').onclick = async () => {
   try { await api(`/api/accounts/${state.selected}/collect`, {method:'POST'}); await loadAccounts(); await refresh(); }
   catch(e){ alert(e.detail||'collection failed'); }
   finally { btn.textContent='Collect now'; btn.disabled=false; }
+};
+document.getElementById('backfillBtn').onclick = async () => {
+  if (!state.selected) return alert('Select an account first.');
+  const btn = document.getElementById('backfillBtn'); btn.textContent='Backfilling…'; btn.disabled=true;
+  try {
+    const r = await api(`/api/accounts/${state.selected}/backfill?days=60`, {method:'POST'});
+    if (!r.added) alert('History already spans 60 days — nothing to add.');
+    await loadAccounts(); await refresh();
+  }
+  catch(e){ alert(e.detail||'backfill failed'); }
+  finally { btn.textContent='Backfill 60d'; btn.disabled=false; }
 };
 document.getElementById('exportBtn').onclick = () => {
   const d = state.data;

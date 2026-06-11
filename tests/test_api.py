@@ -101,6 +101,35 @@ def test_analyze_unknown_metric(client):
     assert r.status_code == 400
 
 
+def test_backfill_endpoint(client):
+    acc = client.post("/api/accounts", json={"username": "demo"}).json()
+
+    # No snapshots yet → 400 (need one real anchor first).
+    assert client.post(f"/api/accounts/{acc['id']}/backfill").status_code == 400
+
+    Session = client._Session
+    db = Session()
+    account = db.get(Account, acc["id"])
+    collect_account(db, account, fetch_fn=lambda u: _FakeMetrics(50_000))
+    db.close()
+
+    r = client.post(f"/api/accounts/{acc['id']}/backfill?days=30")
+    assert r.status_code == 200
+    assert r.json()["added"] == 30
+
+    snaps = client.get(f"/api/accounts/{acc['id']}/snapshots").json()
+    assert len(snaps) == 31
+    followers = [s["followers"] for s in sorted(snaps, key=lambda s: s["captured_at"])]
+    assert followers[-1] == 50_000  # the real reading stays the endpoint
+    assert followers[0] < 50_000  # history grows into it
+
+    # Second run is a no-op once the span is reached.
+    assert client.post(f"/api/accounts/{acc['id']}/backfill?days=30").json()["added"] == 0
+
+    # Unknown account → 404.
+    assert client.post("/api/accounts/999/backfill").status_code == 404
+
+
 def test_metrics_endpoint(client):
     body = client.get("/api/analytics/metrics").json()
     assert "followers" in body["metrics"]
