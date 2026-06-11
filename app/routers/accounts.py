@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..backfill import backfill_account
 from ..collector import collect_account
 from ..database import get_db
 from ..instagram import InstagramError
@@ -62,6 +63,25 @@ def list_snapshots(account_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=404, detail="account not found")
     return [SnapshotOut.model_validate(s) for s in account.snapshots]
+
+
+@router.post("/{account_id}/backfill")
+def backfill_history(
+    account_id: int,
+    days: int = Query(60, ge=2, le=365),
+    db: Session = Depends(get_db),
+):
+    """Generate synthetic history ending at the earliest real snapshot (demo)."""
+    account = db.get(Account, account_id)
+    if not account:
+        raise HTTPException(status_code=404, detail="account not found")
+    if not account.snapshots:
+        raise HTTPException(
+            status_code=400, detail="collect at least one real snapshot first"
+        )
+    added = backfill_account(db, account, days)
+    db.commit()
+    return {"username": account.username, "days": days, "added": added}
 
 
 @router.post("/{account_id}/collect", response_model=SnapshotOut)
