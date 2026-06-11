@@ -2,3 +2,4 @@ python-pptx>=1.0
 matplotlib>=3.8
 pandas>=2.2
 numpy>=1.26
+statsmodels>=0.14

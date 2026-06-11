@@ -7,9 +7,11 @@
 네이버 데이터랩 실데이터(``naver_datalab_panel.csv``)로 차트를 다시 그리고
 ``insta_trend_timeseries.pptx`` 를 조립합니다.
 
-구성: CS 시계열 수업 이론(정상성·ACF·분해·ARIMA) → 실데이터 분석 →
-2026-06-11 기준 한국 트렌딩 해시태그 결론 + 활용 전략 + 핵심 코드 설명.
-폰트는 임베드하지 않으며 한글 본문은 맑은 고딕을 요청합니다.
+구성: 문제 정의 → 시계열 직관(겹친 신호·추세 제거·자기상관) → 실데이터
+분석 → 모델 비교 → 트렌딩 결론 + 우리 계정 시뮬레이션 → 서비스 고도화
+(AI 기능 로드맵·아키텍처: LSTM·TFT·RAG·LLM 에이전트가 엔진) → 핵심 코드.
+모던·미니멀 스타일(둥근 카드·헤어라인·단일 액센트). 폰트는 임베드하지
+않으며 한글 본문은 맑은 고딕을 요청합니다.
 """
 
 from __future__ import annotations
@@ -33,12 +35,15 @@ KO_FONT = "맑은 고딕"
 EN_FONT = "Segoe UI"
 CODE_FONT = "Consolas"
 
-PINK = RGBColor(0xE1, 0x30, 0x6C)
-PURPLE = RGBColor(0x83, 0x3A, 0xB4)
-INK = RGBColor(0x22, 0x22, 0x22)
-GREY = RGBColor(0x6B, 0x6B, 0x6B)
-LIGHT = RGBColor(0xF2, 0xF2, 0xF4)
-CODE_BG = RGBColor(0x2B, 0x2B, 0x33)
+PINK = RGBColor(0xE1, 0x30, 0x6C)       # 단일 액센트
+PURPLE = RGBColor(0x6A, 0x3D, 0xB8)     # 보조 (드물게)
+INK = RGBColor(0x1A, 0x1A, 0x1E)        # 본문 제목
+GREY = RGBColor(0x66, 0x66, 0x70)       # 본문 muted
+FAINT = RGBColor(0x9A, 0x9A, 0xA2)      # 캡션·푸터
+BORDER = RGBColor(0xE6, 0xE6, 0xEA)     # 카드 외곽선·헤어라인
+LIGHT = RGBColor(0xF6, 0xF6, 0xF9)      # 패널 배경
+PINK_TINT = RGBColor(0xFB, 0xE9, 0xF1)  # 액센트 8% 틴트
+CODE_BG = RGBColor(0x1E, 0x1E, 0x26)
 CODE_FG = RGBColor(0xE8, 0xE8, 0xEE)
 WHITE = RGBColor(0xFF, 0xFF, 0xFF)
 
@@ -61,13 +66,40 @@ def _box(slide, left, top, width, height):
     return tb, tf
 
 
-def _rect(slide, left, top, width, height, color):
+def _rect(slide, left, top, width, height, color, line=None):
     shp = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, left, top, width, height)
     shp.fill.solid()
     shp.fill.fore_color.rgb = color
-    shp.line.fill.background()
+    if line is None:
+        shp.line.fill.background()
+    else:
+        shp.line.color.rgb = line
+        shp.line.width = Pt(1)
     shp.shadow.inherit = False
     return shp
+
+
+def _round_rect(slide, left, top, width, height, color, line=None, radius=0.06):
+    """둥근 모서리 패널 — 모던한 카드 느낌."""
+
+    shp = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, left, top, width, height)
+    shp.fill.solid()
+    shp.fill.fore_color.rgb = color
+    if line is None:
+        shp.line.fill.background()
+    else:
+        shp.line.color.rgb = line
+        shp.line.width = Pt(1)
+    shp.shadow.inherit = False
+    try:
+        shp.adjustments[0] = radius
+    except (IndexError, KeyError):
+        pass
+    return shp
+
+
+def _hairline(slide, left, top, width, color=BORDER):
+    _rect(slide, left, top, width, Pt(1), color)
 
 
 def _blank(prs):
@@ -75,30 +107,31 @@ def _blank(prs):
 
 
 def _footer(slide, page):
-    _rect(slide, 0, SH - Inches(0.32), SW, Inches(0.32), LIGHT)
-    _, tf = _box(slide, Inches(0.4), SH - Inches(0.34), Inches(8), Inches(0.3))
+    _, tf = _box(slide, Inches(0.7), SH - Inches(0.46), Inches(9), Inches(0.3))
     r = tf.paragraphs[0].add_run()
-    r.text = "시계열 데이터 분석 · 한국 해시태그 트렌드 · 기준일 2026-06-11"
-    _set_font(r, 9, color=GREY)
-    _, tf2 = _box(slide, SW - Inches(1.2), SH - Inches(0.34), Inches(0.9), Inches(0.3))
+    r.text = "시계열 데이터 분석  ·  한국 해시태그 트렌드"
+    _set_font(r, 9, color=FAINT)
+    _, tf2 = _box(slide, SW - Inches(1.3), SH - Inches(0.46), Inches(0.9), Inches(0.3))
     p = tf2.paragraphs[0]
     p.alignment = PP_ALIGN.RIGHT
     r2 = p.add_run()
-    r2.text = str(page)
-    _set_font(r2, 9, color=GREY)
+    r2.text = f"{page:02d}"
+    _set_font(r2, 9, bold=True, color=PINK)
 
 
 def header(slide, title, eyebrow=None):
-    _rect(slide, Inches(0.4), Inches(0.42), Inches(0.18), Inches(0.55), PINK)
+    """모던 헤더 — 작은 액센트 점 + 이브로우 + 제목 + 풀폭 헤어라인."""
+
     if eyebrow:
-        _, tfe = _box(slide, Inches(0.75), Inches(0.28), Inches(11), Inches(0.35))
+        _, tfe = _box(slide, Inches(0.72), Inches(0.42), Inches(11.8), Inches(0.32))
         re_ = tfe.paragraphs[0].add_run()
         re_.text = eyebrow.upper()
-        _set_font(re_, 11, bold=True, color=PURPLE, font=EN_FONT)
-    _, tf = _box(slide, Inches(0.72), Inches(0.5), Inches(11.5), Inches(0.7))
+        _set_font(re_, 10.5, bold=True, color=PINK, font=EN_FONT)
+    _, tf = _box(slide, Inches(0.7), Inches(0.72), Inches(11.9), Inches(0.7))
     r = tf.paragraphs[0].add_run()
     r.text = title
-    _set_font(r, 28, bold=True, color=INK)
+    _set_font(r, 27, bold=True, color=INK)
+    _hairline(slide, Inches(0.72), Inches(1.42), Inches(11.9))
 
 
 # --------------------------------------------------------------------------- #
@@ -107,34 +140,41 @@ def header(slide, title, eyebrow=None):
 def title_slide(prs, stats):
     s = _blank(prs)
     _rect(s, 0, 0, SW, SH, WHITE)
-    _rect(s, 0, 0, Inches(0.35), SH, PINK)
-    _rect(s, Inches(0.35), 0, Inches(0.12), SH, PURPLE)
+    # 좌측 가는 액센트 스트라이프
+    _rect(s, 0, 0, Inches(0.16), SH, PINK)
 
-    _, tf = _box(s, Inches(1.0), Inches(1.9), Inches(11.5), Inches(2.2))
+    # 이브로우 칩
+    _round_rect(s, Inches(1.1), Inches(1.75), Inches(3.0), Inches(0.46), PINK_TINT, radius=0.5)
+    _, tfk = _box(s, Inches(1.1), Inches(1.81), Inches(3.0), Inches(0.36))
+    pk = tfk.paragraphs[0]
+    pk.alignment = PP_ALIGN.CENTER
+    rk = pk.add_run()
+    rk.text = "TIME-SERIES ANALYSIS"
+    _set_font(rk, 11, bold=True, color=PINK, font=EN_FONT)
+
+    _, tf = _box(s, Inches(1.05), Inches(2.5), Inches(11.5), Inches(2.4))
     r = tf.paragraphs[0].add_run()
     r.text = "한국 인스타그램 해시태그"
-    _set_font(r, 30, color=GREY)
+    _set_font(r, 26, color=GREY)
     p2 = tf.add_paragraph()
+    p2.space_before = Pt(4)
     r2 = p2.add_run()
     r2.text = "시계열 데이터 분석"
-    _set_font(r2, 54, bold=True, color=INK)
+    _set_font(r2, 56, bold=True, color=INK)
 
-    _, tf2 = _box(s, Inches(1.0), Inches(4.3), Inches(11.3), Inches(1.2))
+    _, tf2 = _box(s, Inches(1.1), Inches(4.95), Inches(11.3), Inches(0.7))
     r3 = tf2.paragraphs[0].add_run()
-    r3.text = "네이버 데이터랩 실데이터로 본 2026년 상반기 해시태그 트렌드"
-    _set_font(r3, 18, color=GREY)
-    p4 = tf2.add_paragraph()
-    r4 = p4.add_run()
-    r4.text = "— 정상성 · 자기상관 · 분해 · 예측: 수업에서 배운 시계열 이론의 실전 적용"
-    _set_font(r4, 15, color=GREY)
+    r3.text = "네이버 데이터랩 실데이터로 본 2026년 상반기 트렌드 — 무엇이 뜨고, 어디로 가는가"
+    _set_font(r3, 17, color=GREY)
 
-    _, tf3 = _box(s, Inches(1.0), Inches(6.1), Inches(11.3), Inches(0.9))
+    _hairline(s, Inches(1.1), Inches(6.0), Inches(6.5))
+    _, tf3 = _box(s, Inches(1.1), Inches(6.2), Inches(11.3), Inches(0.6))
     r5 = tf3.paragraphs[0].add_run()
     r5.text = (
-        f"기준일 {ASOF}  ·  분석 기간 {stats['date_start']} ~ {stats['date_end']}"
-        f" ({stats['n_days']}일)  ·  해시태그 {stats['n_tags']}개"
+        f"기준일 {ASOF}    분석 기간 {stats['date_start']} ~ {stats['date_end']}"
+        f" ({stats['n_days']}일)    해시태그 {stats['n_tags']}개"
     )
-    _set_font(r5, 13, color=PINK, bold=True)
+    _set_font(r5, 12.5, bold=True, color=FAINT)
     return s
 
 
@@ -142,30 +182,39 @@ def agenda_slide(prs, page):
     s = _blank(prs)
     header(s, "목차", "Agenda")
     items = [
-        ("01", "문제 정의와 데이터", "마케터의 고민: 무엇이 떡상할까? · 네이버 데이터랩 실데이터"),
-        ("02", "이론: 시계열의 구조", "확률과정, 구성요소, 가법/승법 분해 모형"),
-        ("03", "이론: 정상성과 차분", "약정상성 3조건, 단위근, 1차 차분"),
-        ("04", "이론: 자기상관과 ARIMA", "ACF/PACF, 백색잡음, AR·MA·ARIMA(p,d,q)"),
-        ("05", "분석: 평활화 · 정상성 · ACF", "이론을 실데이터로 검증"),
-        ("06", "분석: 분해 · 계절성 · 모멘텀 · 예측", "추세/요일 효과 분리와 14일 외삽"),
-        ("07", "결론: 지금 뜨는 해시태그", "2026-06-11 기준 트렌딩 태그와 활용 전략"),
-        ("08", "부록: 핵심 코드 · 한계 · 재현", "pandas/numpy 구현과 데이터 캐비앳"),
+        ("01", "문제 정의와 데이터", "마케터의 고민 · 네이버 데이터랩 실데이터"),
+        ("02", "시계열, 직관으로 이해하기", "겹친 신호 · 추세 걷어내기 · 반복 패턴 찾기"),
+        ("03", "실데이터로 분석하기", "평활화 · 정상성 · 분해 · 계절성 · 예측"),
+        ("04", "모델 비교", "선형 베이스라인 vs SARIMA"),
+        ("05", "결론: 지금 뜨는 태그", "2026-06-11 트렌딩 태그와 활용 전략"),
+        ("06", "우리 계정은 어떻게 될까", "도달 분해 · 14일 예측으로 답하기"),
+        ("07", "AI로 확장하기", "LSTM · Transformer · RAG · LLM 에이전트"),
+        ("08", "부록: 코드 · 한계", "구현 요약과 데이터 캐비앗"),
     ]
-    top = Inches(1.7)
+    top = Inches(1.74)
+    row_h = Inches(0.62)
     for i, (num, t, sub) in enumerate(items):
-        row = top + Inches(0.62) * i
-        _, tf = _box(s, Inches(0.9), row, Inches(0.9), Inches(0.55))
-        r = tf.paragraphs[0].add_run()
+        row = top + row_h * i
+        # 번호 칩
+        _round_rect(s, Inches(0.85), row, Inches(0.5), Inches(0.5), PINK_TINT, radius=0.25)
+        _, tf = _box(s, Inches(0.85), row + Inches(0.07), Inches(0.5), Inches(0.4))
+        p = tf.paragraphs[0]
+        p.alignment = PP_ALIGN.CENTER
+        r = p.add_run()
         r.text = num
-        _set_font(r, 18, bold=True, color=PINK)
-        _, tf2 = _box(s, Inches(1.8), row, Inches(5.6), Inches(0.55))
+        _set_font(r, 14, bold=True, color=PINK, font=EN_FONT)
+        # 제목
+        _, tf2 = _box(s, Inches(1.6), row + Inches(0.02), Inches(5.4), Inches(0.5))
         r2 = tf2.paragraphs[0].add_run()
         r2.text = t
         _set_font(r2, 16, bold=True, color=INK)
-        _, tf3 = _box(s, Inches(7.5), row, Inches(5.3), Inches(0.55))
+        # 부제
+        _, tf3 = _box(s, Inches(7.1), row + Inches(0.05), Inches(5.7), Inches(0.5))
         r3 = tf3.paragraphs[0].add_run()
         r3.text = sub
         _set_font(r3, 12.5, color=GREY)
+        if i < len(items) - 1:
+            _hairline(s, Inches(1.6), row + row_h - Inches(0.1), Inches(11.0))
     _footer(s, page)
     return s
 
@@ -173,71 +222,99 @@ def agenda_slide(prs, page):
 def bullets_slide(prs, page, title, eyebrow, bullets, lead=None):
     s = _blank(prs)
     header(s, title, eyebrow)
-    top = Inches(1.5)
+    top = Inches(1.68)
     if lead:
-        _rect(s, Inches(0.75), top, Inches(11.8), Inches(0.9), LIGHT)
-        _, tf = _box(s, Inches(1.0), top + Inches(0.12), Inches(11.3), Inches(0.7))
+        lh = Inches(0.92)
+        _round_rect(s, Inches(0.72), top, Inches(11.9), lh, PINK_TINT, radius=0.08)
+        _rect(s, Inches(0.72), top, Inches(0.1), lh, PINK)
+        _, tf = _box(s, Inches(1.05), top + Inches(0.1), Inches(11.3), lh - Inches(0.2))
         tf.vertical_anchor = MSO_ANCHOR.MIDDLE
         r = tf.paragraphs[0].add_run()
         r.text = lead
         _set_font(r, 15, bold=True, color=INK)
-        top = top + Inches(1.25)
-    _, tf = _box(s, Inches(0.9), top, Inches(11.6), Inches(4.6))
+        top = top + lh + Inches(0.28)
+    _, tf = _box(s, Inches(0.85), top, Inches(11.7), Inches(4.6))
     for i, (head, body) in enumerate(bullets):
         p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.space_after = Pt(10)
+        p.space_after = Pt(3)
         r = p.add_run()
-        r.text = f"●  {head}"
-        _set_font(r, 16.5, bold=True, color=PINK)
+        r.text = head
+        _set_font(r, 16, bold=True, color=INK)
         if body:
             p2 = tf.add_paragraph()
-            p2.space_after = Pt(13)
+            p2.space_after = Pt(15)
             r2 = p2.add_run()
-            r2.text = f"     {body}"
+            r2.text = body
             _set_font(r2, 13.5, color=GREY)
+    # 좌측 액센트 점들은 텍스트 박스 정렬을 깨므로 생략 — 굵기/색 대비로 위계 표현
     _footer(s, page)
     return s
 
 
-def theory_slide(prs, page, title, eyebrow, concepts, formulas):
-    """이론 슬라이드: 왼쪽 개념 불릿 + 오른쪽 수식 패널."""
+def intuition_slide(prs, page, title, eyebrow, question, analogy, cards, formula=None):
+    """직관 슬라이드: 한 줄 질문 + 비유 박스 + 개념 카드 3장 + (선택) 수식 칩.
+
+    수식 대신 생활 비유와 그림 같은 카드로 개념을 쉽게 전달한다.
+    """
 
     s = _blank(prs)
     header(s, title, eyebrow)
 
-    _, tf = _box(s, Inches(0.8), Inches(1.55), Inches(6.9), Inches(5.3))
-    for i, (head, body) in enumerate(concepts):
-        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
-        p.space_after = Pt(6)
-        r = p.add_run()
-        r.text = f"●  {head}"
-        _set_font(r, 15.5, bold=True, color=PINK)
-        p2 = tf.add_paragraph()
-        p2.space_after = Pt(12)
-        r2 = p2.add_run()
-        r2.text = f"     {body}"
-        _set_font(r2, 12.5, color=GREY)
+    # 한 줄 핵심 질문
+    _, tfq = _box(s, Inches(0.72), Inches(1.58), Inches(11.9), Inches(0.5))
+    rq = tfq.paragraphs[0].add_run()
+    rq.text = question
+    _set_font(rq, 17, bold=True, color=INK)
 
-    # 수식 패널
-    px, py, pw, ph = Inches(7.95), Inches(1.55), Inches(4.85), Inches(5.3)
-    _rect(s, px, py, pw, ph, LIGHT)
-    _rect(s, px, py, pw, Inches(0.5), PURPLE)
-    _, tfh = _box(s, px + Inches(0.2), py + Inches(0.06), pw - Inches(0.4), Inches(0.4))
-    rh = tfh.paragraphs[0].add_run()
-    rh.text = "핵심 수식"
-    _set_font(rh, 13, bold=True, color=WHITE)
-    _, tff = _box(s, px + Inches(0.25), py + Inches(0.7), pw - Inches(0.5), ph - Inches(0.9))
-    for i, (label, formula) in enumerate(formulas):
-        p = tff.paragraphs[0] if i == 0 else tff.add_paragraph()
-        p.space_after = Pt(2)
-        r = p.add_run()
-        r.text = label
-        _set_font(r, 11.5, bold=True, color=PURPLE)
-        p2 = tff.add_paragraph()
-        p2.space_after = Pt(12)
-        r2 = p2.add_run()
-        r2.text = formula
-        _set_font(r2, 13.5, color=INK, font=CODE_FONT)
+    # 비유 박스
+    ay, ah = Inches(2.2), Inches(0.82)
+    _round_rect(s, Inches(0.72), ay, Inches(11.9), ah, PINK_TINT, radius=0.12)
+    _, tfa = _box(s, Inches(1.0), ay, Inches(11.4), ah)
+    tfa.vertical_anchor = MSO_ANCHOR.MIDDLE
+    pa = tfa.paragraphs[0]
+    r1 = pa.add_run()
+    r1.text = "💡 비유   "
+    _set_font(r1, 13.5, bold=True, color=PINK)
+    r2 = pa.add_run()
+    r2.text = analogy
+    _set_font(r2, 13.5, color=INK)
+
+    # 개념 카드 3장
+    n = len(cards)
+    gap = Inches(0.3)
+    total = Inches(11.9)
+    cw = (total - gap * (n - 1)) / n
+    cy = Inches(3.35)
+    ch = Inches(2.75)
+    for i, (icon, term, body) in enumerate(cards):
+        cx = Inches(0.72) + (cw + gap) * i
+        _round_rect(s, cx, cy, cw, ch, LIGHT, line=BORDER, radius=0.07)
+        _, tfi = _box(s, cx + Inches(0.28), cy + Inches(0.24), cw - Inches(0.56), Inches(0.7))
+        ri = tfi.paragraphs[0].add_run()
+        ri.text = icon
+        _set_font(ri, 30, color=INK)
+        _, tft = _box(s, cx + Inches(0.28), cy + Inches(1.02), cw - Inches(0.56), Inches(0.5))
+        rt = tft.paragraphs[0].add_run()
+        rt.text = term
+        _set_font(rt, 15.5, bold=True, color=PINK)
+        _, tfb = _box(s, cx + Inches(0.28), cy + Inches(1.5), cw - Inches(0.56), Inches(1.15))
+        rb = tfb.paragraphs[0].add_run()
+        rb.text = body
+        _set_font(rb, 12.5, color=GREY)
+
+    # 수식 칩 (선택) — 작게, 부담 없이
+    if formula:
+        fy = Inches(6.35)
+        _round_rect(s, Inches(0.72), fy, Inches(11.9), Inches(0.5), INK, radius=0.3)
+        _, tff = _box(s, Inches(1.0), fy, Inches(11.4), Inches(0.5))
+        tff.vertical_anchor = MSO_ANCHOR.MIDDLE
+        pf = tff.paragraphs[0]
+        rfl = pf.add_run()
+        rfl.text = "수식  "
+        _set_font(rfl, 11, bold=True, color=PINK, font=EN_FONT)
+        rf = pf.add_run()
+        rf.text = formula
+        _set_font(rf, 13, color=WHITE, font=CODE_FONT)
     _footer(s, page)
     return s
 
@@ -245,62 +322,83 @@ def theory_slide(prs, page, title, eyebrow, concepts, formulas):
 def chart_slide(prs, page, title, eyebrow, image, notes):
     s = _blank(prs)
     header(s, title, eyebrow)
-    s.shapes.add_picture(str(ASSETS / image), Inches(0.55), Inches(1.45), width=Inches(8.5))
-    panel_left = Inches(9.25)
-    _rect(s, panel_left, Inches(1.45), Inches(3.55), Inches(5.4), LIGHT)
-    _, tf = _box(s, panel_left + Inches(0.22), Inches(1.65), Inches(3.15), Inches(5.1))
-    p0 = tf.paragraphs[0]
-    r0 = p0.add_run()
-    r0.text = "읽는 법"
-    _set_font(r0, 13, bold=True, color=PURPLE)
-    p0.space_after = Pt(8)
-    for note in notes:
-        p = tf.add_paragraph()
-        p.space_after = Pt(10)
+    s.shapes.add_picture(str(ASSETS / image), Inches(0.5), Inches(1.7), width=Inches(8.55))
+    panel_left = Inches(9.3)
+    py, ph = Inches(1.7), Inches(5.15)
+    _round_rect(s, panel_left, py, Inches(3.55), ph, LIGHT, line=BORDER, radius=0.05)
+    # 패널 헤더
+    _, tfh = _box(s, panel_left + Inches(0.28), py + Inches(0.22), Inches(3.1), Inches(0.4))
+    rh = tfh.paragraphs[0].add_run()
+    rh.text = "📖  읽는 법"
+    _set_font(rh, 13, bold=True, color=PINK)
+    _hairline(s, panel_left + Inches(0.28), py + Inches(0.72), Inches(3.0))
+    _, tf = _box(s, panel_left + Inches(0.28), py + Inches(0.88), Inches(3.05), ph - Inches(1.1))
+    for i, note in enumerate(notes):
+        p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
+        p.space_after = Pt(11)
+        rn = p.add_run()
+        rn.text = "— "
+        _set_font(rn, 12.5, bold=True, color=PINK)
         r = p.add_run()
-        r.text = f"• {note}"
+        r.text = note
         _set_font(r, 12.5, color=INK)
     _footer(s, page)
     return s
 
 
-def section_slide(prs, kicker, title):
+def section_slide(prs, kicker, title, big_no):
     s = _blank(prs)
     _rect(s, 0, 0, SW, SH, INK)
-    _rect(s, Inches(0.9), Inches(3.0), Inches(1.4), Inches(0.12), PINK)
-    _, tf = _box(s, Inches(0.9), Inches(2.2), Inches(11), Inches(0.6))
+    # 거대한 흐린 번호 (배경 장식)
+    _, tfn = _box(s, Inches(8.5), Inches(0.2), Inches(4.6), Inches(4.0))
+    pn = tfn.paragraphs[0]
+    pn.alignment = PP_ALIGN.RIGHT
+    rn = pn.add_run()
+    rn.text = big_no
+    _set_font(rn, 200, bold=True, color=RGBColor(0x2B, 0x2B, 0x33), font=EN_FONT)
+    # 키커 + 제목
+    _, tf = _box(s, Inches(0.95), Inches(2.95), Inches(11), Inches(0.6))
     r = tf.paragraphs[0].add_run()
     r.text = kicker.upper()
     _set_font(r, 14, bold=True, color=PINK, font=EN_FONT)
-    _, tf2 = _box(s, Inches(0.9), Inches(3.3), Inches(11.5), Inches(1.5))
+    _, tf2 = _box(s, Inches(0.92), Inches(3.5), Inches(11.5), Inches(1.5))
     r2 = tf2.paragraphs[0].add_run()
     r2.text = title
     _set_font(r2, 40, bold=True, color=WHITE)
+    _rect(s, Inches(0.95), Inches(5.05), Inches(1.5), Pt(3), PINK)
     return s
 
 
-def cards_slide(prs, page, title, eyebrow, cards):
+def cards_slide(prs, page, title, eyebrow, cards, lead=None):
     s = _blank(prs)
     header(s, title, eyebrow)
-    cw, ch = Inches(5.9), Inches(2.1)
+    top = Inches(1.62)
+    if lead:
+        _, tfl = _box(s, Inches(0.75), top, Inches(11.8), Inches(0.4))
+        rl = tfl.paragraphs[0].add_run()
+        rl.text = lead
+        _set_font(rl, 14, bold=True, color=GREY)
+        top = Inches(2.15)
+    cw, ch = Inches(5.85), Inches(2.12)
     gap = Inches(0.3)
     lefts = [Inches(0.75), Inches(0.75) + cw + gap]
-    tops = [Inches(1.55), Inches(1.55) + ch + gap]
+    tops = [top, top + ch + Inches(0.28)]
     for i, (tag, big, body, color) in enumerate(cards[:4]):
         left = lefts[i % 2]
-        top = tops[i // 2]
-        _rect(s, left, top, cw, ch, LIGHT)
-        _rect(s, left, top, Inches(0.14), ch, color)
-        _, tf = _box(s, left + Inches(0.35), top + Inches(0.18), cw - Inches(0.6), ch - Inches(0.36))
+        top_i = tops[i // 2]
+        _round_rect(s, left, top_i, cw, ch, LIGHT, line=BORDER, radius=0.06)
+        _rect(s, left, top_i + Inches(0.18), Inches(0.1), ch - Inches(0.36), color)
+        _, tf = _box(s, left + Inches(0.38), top_i + Inches(0.2), cw - Inches(0.65), ch - Inches(0.4))
         r = tf.paragraphs[0].add_run()
         r.text = tag
-        _set_font(r, 13, bold=True, color=color)
+        _set_font(r, 12.5, bold=True, color=color)
         p2 = tf.add_paragraph()
+        p2.space_before = Pt(2)
         r2 = p2.add_run()
         r2.text = big
         _set_font(r2, 22, bold=True, color=INK)
         p3 = tf.add_paragraph()
-        p3.space_before = Pt(4)
+        p3.space_before = Pt(5)
         r3 = p3.add_run()
         r3.text = body
         _set_font(r3, 12.5, color=GREY)
@@ -330,6 +428,58 @@ def code_slide(prs, page, title, eyebrow, blocks):
             r.text = line
             _set_font(r, 12, color=CODE_FG, font=CODE_FONT)
         top += bh + Inches(0.18)
+    _footer(s, page)
+    return s
+
+
+def pipeline_slide(prs, page, title, eyebrow, stages, feedback):
+    """가로 파이프라인 다이어그램: 단계 박스 + 화살표 + 피드백 루프."""
+
+    s = _blank(prs)
+    header(s, title, eyebrow)
+    n = len(stages)
+    margin = Inches(0.72)
+    total = Inches(11.9)
+    gap = Inches(0.34)
+    bw = (total - gap * (n - 1)) / n
+    by, bh = Inches(2.55), Inches(2.25)
+    for i, (num, name, sub, color) in enumerate(stages):
+        bx = margin + (bw + gap) * i
+        _round_rect(s, bx, by, bw, bh, LIGHT, line=BORDER, radius=0.08)
+        _rect(s, bx, by, bw, Inches(0.12), color)
+        _, tfn = _box(s, bx + Inches(0.2), by + Inches(0.26), bw - Inches(0.4), Inches(0.4))
+        rn = tfn.paragraphs[0].add_run()
+        rn.text = num
+        _set_font(rn, 15, bold=True, color=color, font=EN_FONT)
+        _, tft = _box(s, bx + Inches(0.2), by + Inches(0.74), bw - Inches(0.4), Inches(0.6))
+        rt = tft.paragraphs[0].add_run()
+        rt.text = name
+        _set_font(rt, 14, bold=True, color=INK)
+        _, tfs = _box(s, bx + Inches(0.2), by + Inches(1.3), bw - Inches(0.4), Inches(0.85))
+        rs = tfs.paragraphs[0].add_run()
+        rs.text = sub
+        _set_font(rs, 10.5, color=GREY)
+        if i < n - 1:
+            ax = bx + bw - Inches(0.02)
+            arr = s.shapes.add_shape(
+                MSO_SHAPE.RIGHT_ARROW, ax, by + bh / 2 - Inches(0.1), gap + Inches(0.04), Inches(0.2)
+            )
+            arr.fill.solid()
+            arr.fill.fore_color.rgb = FAINT
+            arr.line.fill.background()
+            arr.shadow.inherit = False
+    # 피드백 루프 밴드
+    fy = by + bh + Inches(0.45)
+    _round_rect(s, margin, fy, total, Inches(0.66), PINK_TINT, radius=0.3)
+    _, tff = _box(s, margin + Inches(0.3), fy, total - Inches(0.6), Inches(0.66))
+    tff.vertical_anchor = MSO_ANCHOR.MIDDLE
+    pf = tff.paragraphs[0]
+    rfl = pf.add_run()
+    rfl.text = "↺ 피드백 루프   "
+    _set_font(rfl, 13, bold=True, color=PINK)
+    rf = pf.add_run()
+    rf.text = feedback
+    _set_font(rf, 12.5, color=INK)
     _footer(s, page)
     return s
 
@@ -381,120 +531,97 @@ def build():
         ],
     )
 
-    # ---------------- Part 1: 이론 ---------------- #
-    section_slide(prs, "Part 1 · Theory", "시계열 이론 — 수업에서 배운 도구들")
+    # ---------------- Part 1: 직관 ---------------- #
+    section_slide(prs, "Part 1 · Intuition", "시계열, 직관으로 이해하기", "01")
 
-    theory_slide(
-        prs, next(pg), "시계열 데이터란", "02 · Stochastic process",
-        concepts=[
-            ("정의", "시간 순서로 관측된 확률변수의 열 — 확률과정 {X_t}의 한 실현(realization)"),
-            ("핵심 성질: 시간 의존성", "관측치가 i.i.d.가 아님 — 오늘 값이 어제 값과 상관 → 고전 통계의 독립 가정이 무너짐"),
-            ("왜 따로 배우는가", "회귀처럼 다루면 표준오차·검정이 모두 왜곡 — 자기상관을 모형 안에 넣어야 함"),
-            ("우리 데이터", "해시태그별 일별 관심도 161개 관측치 = 일 단위 이산 시계열 9개"),
+    intuition_slide(
+        prs, next(pg), "① 시계열은 '겹쳐진 신호'다", "02 · Intuition",
+        question="하나의 그래프처럼 보이지만, 사실은 여러 신호가 포개진 결과다.",
+        analogy="노래 한 곡 = 멜로디 + 비트 + 잡음. 시계열도 추세 + 주기 + 우연이 합쳐진 소리다.",
+        cards=[
+            ("📈", "추세 (장기 방향)", "팔로워가 늘듯 천천히 오르내리는 큰 흐름. '이 태그가 뜨는가, 식는가'를 결정."),
+            ("🔁", "계절성 (반복 리듬)", "매주 주말마다 솟는 규칙적 패턴. 달력만 봐도 예상되는 출렁임."),
+            ("🎲", "불규칙 (우연·이벤트)", "연휴·바이럴처럼 설명 안 되는 잡음과 깜짝 사건. 예측이 어려운 부분."),
         ],
-        formulas=[
-            ("확률과정", "{ X_t : t = 1, 2, ..., n }"),
-            ("자기공분산", "γ(k) = Cov(X_t, X_{t+k})"),
-            ("시간 의존성", "Corr(X_t, X_{t-1}) ≠ 0"),
-            ("표본 (우리 데이터)", "n = 161일, 9개 시리즈"),
-        ],
+        formula="관측 = 추세(T) + 계절(S) + 불규칙(R)",
     )
 
-    theory_slide(
-        prs, next(pg), "구성요소와 분해 모형", "02 · Decomposition",
-        concepts=[
-            ("4대 구성요소", "추세(T) 장기 방향 · 계절(S) 고정 주기 반복 · 순환(C) 비고정 장주기 · 불규칙(R) 잔차"),
-            ("가법 모형", "변동 폭이 수준과 무관하게 일정할 때 — 성분을 더해서 관측을 설명"),
-            ("승법 모형", "수준이 커질수록 변동도 커질 때 — 로그 변환하면 가법으로 환원"),
-            ("추정 방법", "추세는 중심 이동평균, 계절성분은 '같은 요일끼리 평균', 잔차는 나머지"),
+    intuition_slide(
+        prs, next(pg), "② 비교하려면 '추세를 걷어내라'", "02 · Intuition",
+        question="값이 계속 커지면 어제와 오늘을 그대로 비교할 수 없다 — 기준선이 움직이니까.",
+        analogy="키 자체가 아니라 '어제보다 몇 cm 자랐나'를 보면, 성장 속도를 공정하게 비교할 수 있다.",
+        cards=[
+            ("🪜", "비정상 (기준선이 이동)", "평균이 시간에 따라 움직이는 상태. 추세 때문에 '가짜 상관'에 속기 쉽다."),
+            ("➖", "차분 = 어제와의 차이", "Xₜ − Xₜ₋₁ 로 바꾸면 추세가 사라지고 변화량만 남는다."),
+            ("⚖️", "정상성 (안정된 신호)", "평균·변동이 일정해진 상태. 그래야 패턴 분석과 예측이 신뢰성을 가진다."),
         ],
-        formulas=[
-            ("가법 모형", "X_t = T_t + S_t + R_t"),
-            ("승법 모형", "X_t = T_t × S_t × R_t"),
-            ("로그 변환", "log X_t = log T_t + log S_t + log R_t"),
-            ("추세 추정 (period=7)", "T_t = (1/7) Σ X_{t+j}, j=-3..3"),
-            ("계절 추정", "S_t = mean( X−T | 같은 요일 )"),
-        ],
+        formula="차분  ∇Xₜ = Xₜ − Xₜ₋₁    (추세 제거)",
     )
 
-    theory_slide(
-        prs, next(pg), "정상성과 차분", "03 · Stationarity",
-        concepts=[
-            ("약정상성 3조건", "① 평균이 시간에 불변 ② 분산이 유한·불변 ③ 자기공분산이 시차 k에만 의존"),
-            ("왜 중요한가", "ARMA류 모형·ACF 해석·예측 이론이 모두 정상성 위에서 성립 — 비정상 계열은 가짜 상관(spurious) 위험"),
-            ("진단", "시각: 롤링 평균/분산이 움직이는가 · ACF가 천천히 감쇠하는가 / 검정: ADF 단위근 검정"),
-            ("처방: 차분", "1차 차분으로 추세 제거, 계절차분(lag 7)으로 주기 제거 — ARIMA의 d가 바로 차분 횟수"),
+    intuition_slide(
+        prs, next(pg), "③ '같은 패턴이 반복되나?' — 자기상관", "02 · Intuition",
+        question="오늘 값이 7일 전과 닮았는가? 닮은 정도를 시차별로 재면 숨은 리듬이 드러난다.",
+        analogy="요일 장사 같다 — 이번 주 토요일 매출은 지난 토요일과 닮는다. 그 '닮음'이 자기상관.",
+        cards=[
+            ("📊", "자기상관 (ACF)", "며칠 전 값과 얼마나 닮았는지 시차별로 측정. lag 7에서 튀면 '주간 리듬' 존재."),
+            ("🔇", "백색잡음", "아무 패턴 없는 순수 잡음. 분석 후 남은 찌꺼기가 여기에 가까우면 잘 설명한 것."),
+            ("🤖", "예측 모델", "추세+요일 패턴을 학습해 미래로 연장. 더 정교한 버전이 ARIMA·SARIMA."),
         ],
-        formulas=[
-            ("약정상성", "E[X_t] = μ,  Var(X_t) = σ² < ∞"),
-            ("", "Cov(X_t, X_{t+k}) = γ(k)  ∀t"),
-            ("1차 차분", "∇X_t = X_t − X_{t-1}"),
-            ("계절 차분 (주간)", "∇₇X_t = X_t − X_{t-7}"),
-            ("랜덤워크(비정상)", "X_t = X_{t-1} + ε_t"),
-        ],
-    )
-
-    theory_slide(
-        prs, next(pg), "자기상관 · 백색잡음 · ARIMA", "04 · ACF & ARIMA",
-        concepts=[
-            ("ACF", "시차 k에서 자기 자신과의 상관 ρ(k) — 추세면 느리게 감쇠, 주기 s면 lag s마다 스파이크"),
-            ("백색잡음", "평균 0, 상관 0인 순수 잡음 — 잔차가 백색잡음이면 모형이 구조를 다 흡수했다는 신호"),
-            ("판정 기준", "표본 ACF가 ±1.96/√n 밴드 안이면 해당 시차 상관은 유의하지 않음 (95%)"),
-            ("ARIMA(p,d,q)", "AR(p) 과거 값 회귀 + I(d) 차분 + MA(q) 과거 충격 회귀 — 차수는 ACF/PACF로 식별"),
-            ("우리의 선택", "수업 범위의 해석 가능한 기본형: 선형추세 + 요일 더미 → ARIMA 대비 단순하지만 구조가 투명"),
-        ],
-        formulas=[
-            ("자기상관함수", "ρ(k) = γ(k) / γ(0)"),
-            ("표본 ACF 한계", "±1.96 / √n  (n=161 → ±0.155)"),
-            ("백색잡음", "ε_t ~ WN(0, σ²)"),
-            ("AR(p)", "X_t = Σ φ_i X_{t-i} + ε_t"),
-            ("MA(q)", "X_t = ε_t + Σ θ_j ε_{t-j}"),
-            ("ARIMA", "∇^d X_t 가 ARMA(p,q)"),
-        ],
+        formula="자기상관  ρ(k) = corr(Xₜ, Xₜ₋ₖ)",
     )
 
     # ---------------- Part 2: 분석 ---------------- #
-    section_slide(prs, "Part 2 · Analysis", "실데이터 분석 — 이론을 데이터에 적용")
+    section_slide(prs, "Part 2 · Analysis", "실데이터로 분석하기", "02")
 
     chart_slide(
-        prs, next(pg), "원시 시계열 관찰", "05 · Raw signal", "01_overview.png",
+        prs, next(pg), "원시 시계열 관찰", "03 · Raw signal", "01_overview.png",
         ["9개 태그의 일별 관심도 원계열", "톱니 모양 = 주 7일 계절성", "#캠핑·#피크닉: 봄에 큰 산(계절 추세)", "#카페: 1월 고점 후 하락", "5월 중순 #등산 스파이크 = 연휴 외생 이벤트"],
     )
     chart_slide(
-        prs, next(pg), "이동평균 평활화", "05 · Smoothing", "02_moving_average.png",
+        prs, next(pg), "이동평균 평활화", "03 · Smoothing", "02_moving_average.png",
         [f"포커스: #{FOCUS} (6월 모멘텀 1위)", "회색 = 원계열(노이즈)", "7일 MA = 주간 주기 상쇄", "28일 MA = 장기 추세만", "1~5월 꾸준한 우상향 확인"],
     )
     chart_slide(
-        prs, next(pg), "정상성 진단과 차분", "05 · Stationarity", "03_stationarity.png",
+        prs, next(pg), "정상성 진단과 차분", "03 · Stationarity", "03_stationarity.png",
         ["위: 롤링 평균이 계속 상승 → 평균 비불변 = 비정상", "롤링 표준편차도 5월에 점프", "아래: 1차 차분 후 평균이 0에 고정", "차분으로 (약)정상성 확보 → ARIMA의 d=1에 해당"],
     )
     chart_slide(
-        prs, next(pg), "자기상관함수(ACF)", "05 · ACF", "04_acf.png",
+        prs, next(pg), "자기상관함수(ACF)", "03 · ACF", "04_acf.png",
         ["왼쪽(원계열): 천천히 감쇠 → 추세 지배 = 비정상 신호", "오른쪽(차분): lag 7·14·21 스파이크 → 주간 계절성", "점선 = ±1.96/√n 백색잡음 한계", "이론 그대로: 차분이 추세를 지우자 주기가 드러남"],
     )
     chart_slide(
-        prs, next(pg), "가법 분해", "06 · Decomposition", "05_decomposition.png",
+        prs, next(pg), "가법 분해", "03 · Decomposition", "05_decomposition.png",
         ["X = 추세 + 계절 + 잔차로 분리", "추세: 1월~5월 +60% 수준 상승", "계절: 주말 양(+), 주중 음(−) 규칙 진동", "잔차: 5월 연휴 스파이크 외엔 백색잡음에 가까움"],
     )
     chart_slide(
-        prs, next(pg), "주간 계절성 프로파일", "06 · Seasonality", "06_weekly_profile.png",
+        prs, next(pg), "주간 계절성 프로파일", "03 · Seasonality", "06_weekly_profile.png",
         ["요일 평균을 자기 평균=100으로 정규화", "#등산·#피크닉·#캠핑: 주말(토) 피크", "#다이어트: 월요일 피크 — '월요일 결심' 효과", "게시 타이밍 설계의 직접 근거"],
     )
     chart_slide(
-        prs, next(pg), "성장 모멘텀", "06 · Momentum", "07_growth.png",
+        prs, next(pg), "성장 모멘텀", "03 · Momentum", "07_growth.png",
         [f"1월 첫 주=100 지수화", f"연초 대비: #피크닉 +{g['피크닉']:.0f}% · #캠핑 +{g['캠핑']:.0f}% · #등산 +{g['등산']:.0f}%",
          f"최근 30일: #등산 +{m['등산']:.1f}% · #클라이밍 +{m['클라이밍']:.1f}% 만 상승", "봄 태그(피크닉·캠핑)는 5월 피크 통과 후 하락 전환"],
     )
     chart_slide(
-        prs, next(pg), "14일 예측", "06 · Forecast", "08_forecast.png",
+        prs, next(pg), "14일 예측", "03 · Forecast", "08_forecast.png",
         ["모형: 선형추세 + 요일 계절성 (최근 8주 적합)", "점선 = 6/11~6/24 예측 경로", "음영 = 95% 예측구간 (잔차 분산 기반)", "주말마다 솟는 요일 패턴까지 재현"],
+    )
+    chart_slide(
+        prs, next(pg), "모델 비교 — 베이스라인 vs SARIMA", "04 · Model comparison", "09_sarima_compare.png",
+        [
+            "분홍 = 선형추세+요일더미(수업용 기본형)",
+            "검정 = SARIMA(1,1,1)(1,1,1)₇ — 차분·AR·MA·계절을 모두 추정",
+            f"홀드아웃 백테스트(마지막 14일): 평균절대오차 SARIMA {stats['sar_mae']:.2f} < 베이스라인 {stats['base_mae']:.2f}",
+            "SARIMA가 ~14% 더 정확 — 다만 해석은 베이스라인이 더 투명(추세·요일 분리)",
+            "교훈: 단순 모델로 '구조 이해', SARIMA로 '정확도' — 목적에 따라 선택",
+        ],
     )
 
     # ---------------- 결론 ---------------- #
-    section_slide(prs, "Conclusion", "그래서, 지금 뭘 써야 하나")
+    section_slide(prs, "Conclusion", "그래서, 지금 뭘 써야 하나", "03")
 
     cards_slide(
-        prs, next(pg), "2026-06-11 기준 트렌딩 해시태그", "07 · Now trending",
+        prs, next(pg), "2026-06-11 기준 트렌딩 해시태그", "05 · Now trending",
         cards=[
             ("📈 지금 상승 중 (최근 30일 모멘텀 +)", "#등산  #클라이밍",
              f"등산 +{m['등산']:.1f}%, 클라이밍 +{m['클라이밍']:.1f}% — 초여름에도 모멘텀 유지, 지금 올라탈 태그", PINK),
@@ -508,7 +635,7 @@ def build():
     )
 
     bullets_slide(
-        prs, next(pg), "콘텐츠 활용 전략", "07 · Action",
+        prs, next(pg), "콘텐츠 활용 전략", "05 · Action",
         lead="시계열 인사이트 → 게시물 전략: 무엇을(태그), 언제(요일), 어떻게(조합)",
         bullets=[
             ("주력 태그", "#등산 #클라이밍 중심 콘텐츠 — 상승 모멘텀 구간에 게시해 노출 탄력 확보"),
@@ -516,6 +643,87 @@ def build():
             ("태그 조합", "상승 태그 + 안정 태그 묶기: #등산 × #다이어트(여름 준비), #클라이밍 × #카페(실내 연계)"),
             ("리스크 관리", "#피크닉·#캠핑은 하락 전환 — 신규 기획 보류, 기존 콘텐츠는 내년 3~4월 재활용 예약"),
             ("운영 루프", "데이터랩 재수집(주 1회) → 모멘텀 갱신 → 태그 포트폴리오 리밸런싱"),
+        ],
+    )
+
+    # 문제 정의로 되돌아가기: "우리 계정은 어떻게 될까?"
+    chart_slide(
+        prs, next(pg), "되돌아온 질문: 우리 계정은 어떻게 될까", "06 · Our account", "10_account_decomp.png",
+        [
+            "가상 계정의 일별 도달을 분해 (※ 교육용 시뮬레이션)",
+            "추세: 팔로워 성장에 따른 꾸준한 우상향",
+            "계절: 주말(일) 피크 — 요일 효과",
+            "바이럴 릴스 1건 = 추세가 아니라 잔차로 포착",
+            "→ '한 번 터진 것'과 '꾸준한 성장'은 다른 성분, 분리해야 보임",
+        ],
+    )
+    chart_slide(
+        prs, next(pg), "우리 계정 14일 예측", "06 · Our account", "11_account_forecast.png",
+        [
+            f"분석 기간 도달 +{stats['acct_growth']:.0f}% 성장",
+            f"추세 기울기 +{stats['acct_slope']:.0f}/일 (양수=성장 지속)",
+            "바이럴 스파이크가 가라앉아도 기저 추세는 우상향",
+            "예측: 완만한 상승 + 주말 피크 반복",
+            "답: 단발 바이럴에 일희일비 말고 추세 기울기를 보라",
+        ],
+    )
+
+    # ---------------- Part 3: 서비스 고도화 ---------------- #
+    section_slide(prs, "Part 3 · Service", "AI로 트렌드 분석을 '서비스'로 키운다", "04")
+
+    bullets_slide(
+        prs, next(pg), "지금의 서비스, 그리고 다음", "07 · Vision",
+        lead="지금은 '지나간 인기'를 보여준다. 다음은 '다가올 인기'를 예측하고, 이유를 설명하고, 액션까지 제안한다.",
+        bullets=[
+            ("AS-IS — 사후 랭킹", "해시태그 빈도·좋아요로 '이미 뜬' 태그를 정렬해 보여주는 단계 (현재 Streamlit 앱)"),
+            ("그 한계", "지나간 인기라 따라가면 늦고, '왜 떴나·다음은'은 사람이 직접 해석해야 함"),
+            ("TO-BE — AI 트렌드 파트너", "떡상 예측 + 자동 인사이트 + 콘텐츠 코파일럿으로 '분석'을 '의사결정'으로"),
+            ("핵심 전환", "보여주는 도구 → 대신 판단하고 제안하는 서비스"),
+        ],
+    )
+
+    cards_slide(
+        prs, next(pg), "AI 기반 핵심 기능", "07 · Features",
+        lead="각 기능은 앞서 만든 분석 위에 AI 엔진을 얹어 사용자 가치로 바꾼 것.",
+        cards=[
+            ("🚀 떡상 예측 알림", "다음에 뜰 태그", "3~14일 뒤 상승할 태그를 미리 푸시   엔진: LSTM·TFT 시계열 예측", PINK),
+            ("🧭 자동 인사이트", "왜 · 어디로", "‘#등산 상승, #피크닉 피크 통과’를 근거까지 자동 요약   엔진: RAG + LLM", PURPLE),
+            ("✍️ 콘텐츠 코파일럿", "바로 쓸 초안", "추천 태그·타이밍에 맞춘 캡션·기획안 자동 생성   엔진: LLM 에이전트", INK),
+            ("📊 계정 성장 진단", "진짜 성장?", "단발 바이럴인지 꾸준한 성장인지 분해·예측으로 진단   엔진: 시계열 분해", GREY),
+        ],
+    )
+
+    bullets_slide(
+        prs, next(pg), "단계별 고도화 로드맵", "07 · Roadmap",
+        lead="한 번에 다 만들지 않는다 — 지금 가진 자산 위에 단계적으로 얹는다.",
+        bullets=[
+            ("Phase 1 — 지금 (분석·시각화)", "해시태그 랭킹 + 시계열 분석 대시보드 (이미 보유한 자산)"),
+            ("Phase 2 — 예측 엔진 + 알림", "SARIMA→LSTM 예측을 붙여 '떡상 알림' 출시 — 사후에서 선제로 전환"),
+            ("Phase 3 — 지식베이스 + 자동 인사이트", "트렌드·성과를 벡터DB(RAG)에 축적 → LLM이 근거 기반 리포트 자동 생성"),
+            ("Phase 4 — 코파일럿 + 개인화", "LLM 에이전트가 계정별 맞춤 태그·콘텐츠 제안, 성과 피드백으로 자동 학습"),
+        ],
+    )
+
+    pipeline_slide(
+        prs, next(pg), "기능을 떠받치는 시스템 아키텍처", "07 · Architecture",
+        stages=[
+            ("01", "데이터 수집", "네이버 데이터랩 · 인스타그램 API · 일별 패널", PINK),
+            ("02", "시계열 예측", "SARIMA · LSTM · TFT 앙상블로 14일 전망", PURPLE),
+            ("03", "지식베이스 (RAG)", "벡터DB: 과거 트렌드 · 캠페인 성과 검색", INK),
+            ("04", "LLM 에이전트", "근거 기반 인사이트 · 콘텐츠 초안 생성", PINK),
+            ("05", "콘텐츠 추천", "태그 · 타이밍 · 조합 액션 제안", PURPLE),
+        ],
+        feedback="게시 성과를 다시 수집해 예측·추천 모델을 재학습 — 쓸수록 똑똑해지는 서비스.",
+    )
+
+    bullets_slide(
+        prs, next(pg), "기대 효과 & 차별화", "07 · Value",
+        lead="왜 이 고도화가 돈이 되나 — 마케터의 시간을 줄이고, 선제적으로 움직이게 한다.",
+        bullets=[
+            ("시간 절감", "트렌드 리서치·콘텐츠 기획을 분 단위로 — 분석·초안 작성을 AI가 대신"),
+            ("선제 대응", "사후 랭킹이 아니라 예측 — 경쟁자보다 먼저 뜨는 태그에 올라탐"),
+            ("근거 있는 의사결정", "감이 아니라 데이터 + 근거(RAG)로 — 내부 보고·클라이언트 설득이 쉬워짐"),
+            ("데이터 락인(lock-in)", "쓸수록 계정별 성과가 쌓여 추천이 정교해지는 선순환 → 이탈 방지"),
         ],
     )
 
@@ -561,8 +769,9 @@ def build():
             ("프록시 한계", "네이버 검색량 ≠ 인스타그램 게시량 — '한국 사용자의 주제 관심도'의 대리지표로 해석해야 함"),
             ("상대값 한계", "데이터랩 ratio는 요청 내 정규화 — 태그 간 절대 규모 비교 불가, 시간 변화·모멘텀 비교만 유효"),
             ("실시간성", "2026-06-11 수집 스냅샷 — '실시간 스트림'이 아니라 주기 재수집으로 갱신하는 구조 (전일까지 일별 제공)"),
-            ("모형 한계", "선형추세+요일 더미는 외생 이벤트(연휴 스파이크)·추세 전환을 늦게 반영 — SARIMA·지수평활이 다음 단계"),
-            ("재현", "pip install -r presentation/requirements.txt && python presentation/build_deck.py — CSV 고정으로 결정론적 재생성"),
+            ("계정 시뮬레이션", "'우리 계정' 도달은 계정 인사이트 공개 API가 없어 합성한 교육용 데이터 — 분해/예측 방법론 시연용이며 실측 아님"),
+            ("모형 한계", "선형 베이스라인은 외생 이벤트·추세 전환을 늦게 반영(백테스트 MAE에서 SARIMA에 열세) — 단순성/해석력과 정확도의 트레이드오프"),
+            ("재현", "pip install -r presentation/requirements.txt && python presentation/build_deck.py — CSV·시드 고정으로 결정론적 재생성"),
         ],
     )
 
