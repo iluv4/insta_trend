@@ -296,6 +296,129 @@ def chart_forecast(wide: pd.DataFrame, tag: str = FOCUS, horizon: int = 14) -> f
     return slope
 
 
+# --------------------------------------------------------------------------- #
+# 9 — SARIMA vs 선형추세+요일더미 모델 비교 (+ 홀드아웃 백테스트)
+# --------------------------------------------------------------------------- #
+def _sarima_forecast(train: pd.Series, horizon: int):
+    """SARIMA(1,1,1)(1,1,1)_7 적합 후 예측 평균·신뢰구간·AIC 반환."""
+
+    import warnings
+
+    from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        res = SARIMAX(
+            train,
+            order=(1, 1, 1),
+            seasonal_order=(1, 1, 1, 7),
+            enforce_stationarity=False,
+            enforce_invertibility=False,
+        ).fit(disp=False)
+        fc = res.get_forecast(steps=horizon)
+    idx = pd.date_range(train.index[-1] + pd.Timedelta(days=1), periods=horizon)
+    mean = np.clip(fc.predicted_mean.to_numpy(), 0, None)
+    ci = fc.conf_int(alpha=0.05).to_numpy()
+    return idx, mean, np.clip(ci, 0, None), float(res.aic)
+
+
+def chart_sarima_compare(wide: pd.DataFrame, tag: str = FOCUS, horizon: int = 14) -> dict:
+    s = wide[tag].dropna()
+
+    # --- 홀드아웃 백테스트: 마지막 14일을 가린 채 두 모델로 예측 → MAE 비교 --- #
+    train, test = s.iloc[:-horizon], s.iloc[-horizon:]
+    _, base_bt, _, _ = _fit_forecast(train, horizon)
+    _, sar_bt, _, _ = _sarima_forecast(train, horizon)
+    base_mae = float(np.mean(np.abs(base_bt - test.to_numpy())))
+    sar_mae = float(np.mean(np.abs(sar_bt - test.to_numpy())))
+
+    # --- 전체 데이터 적합 후 향후 14일 예측 --- #
+    bidx, bvals, b_std, _ = _fit_forecast(s, horizon)
+    sidx, svals, sci, aic = _sarima_forecast(s, horizon)
+
+    recent = s.iloc[-70:]
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    ax.plot(recent.index, recent, color="#BBBBBB", lw=1.3, label="관측")
+    # 베이스라인
+    ax.plot(bidx, bvals, color=PALETTE[tag], lw=2.4, ls="--", label="선형추세+요일더미")
+    ax.fill_between(bidx, bvals - 1.96 * b_std, bvals + 1.96 * b_std,
+                    color=PALETTE[tag], alpha=0.12)
+    # SARIMA
+    ax.plot(sidx, svals, color=INK, lw=2.4, label=r"SARIMA(1,1,1)(1,1,1)$_{7}$")
+    ax.fill_between(sidx, sci[:, 0], sci[:, 1], color=INK, alpha=0.10)
+    ax.axvline(s.index[-1], color="#CCCCCC", lw=1.0, ls=":")
+    ax.set_ylabel("관심도")
+    ax.set_title(f"#{tag} 모델 비교 — 선형 베이스라인 vs SARIMA (+14일)", fontweight="bold")
+    ax.legend(frameon=False, fontsize=9, loc="upper left")
+    _style_dates(ax)
+    _save(fig, "09_sarima_compare.png")
+
+    return {"base_mae": base_mae, "sar_mae": sar_mae, "sarima_aic": aic}
+
+
+# --------------------------------------------------------------------------- #
+# 10 — "우리 계정" 시뮬레이션: 도달(reach) 가법 분해
+# --------------------------------------------------------------------------- #
+def chart_account_decomposition() -> Path:
+    from account_sim import VIRAL_DAY, build_account
+
+    s = build_account()
+    trend, seasonal, residual = _decompose(s)
+    viral_date = s.index[VIRAL_DAY]
+
+    fig, axes = plt.subplots(4, 1, figsize=(10.2, 6.6), sharex=True)
+    axes[0].plot(s.index, s, color="#405DE6", lw=1.4)
+    axes[0].annotate("바이럴 릴스 1건",
+                     xy=(viral_date, s.iloc[VIRAL_DAY]),
+                     xytext=(10, -6), textcoords="offset points", fontsize=10,
+                     color="#E1306C", fontweight="bold",
+                     arrowprops=dict(arrowstyle="->", color="#E1306C"))
+    axes[0].set_ylabel(r"관측 도달")
+    axes[1].plot(trend.index, trend, color=INK, lw=2.0)
+    axes[1].set_ylabel(r"추세 $T_t$")
+    axes[2].plot(seasonal.index, seasonal, color="#F77737", lw=1.2)
+    axes[2].set_ylabel(r"계절 $S_t$")
+    axes[3].plot(residual.index, residual, color="#999999", lw=0.9)
+    axes[3].axhline(0, color="#CCCCCC", lw=0.8)
+    axes[3].set_ylabel(r"잔차 $R_t$")
+    for ax in axes:
+        for spine in ("top", "right"):
+            ax.spines[spine].set_visible(False)
+    _style_dates(axes[-1])
+    axes[0].set_title("우리 계정 도달 분해:  추세(팔로워↑) + 주말 계절성 + 바이럴(잔차로 포착)",
+                      fontweight="bold")
+    return _save(fig, "10_account_decomp.png")
+
+
+def chart_account_forecast(horizon: int = 14) -> dict:
+    from account_sim import build_account
+
+    s = build_account()
+    fidx, fvals, resid_std, slope = _fit_forecast(s, horizon, fit_window=42)
+
+    fig, ax = plt.subplots(figsize=FIGSIZE)
+    ax.plot(s.index, s, color="#BBBBBB", lw=1.1, label="관측 도달")
+    ax.plot(s.rolling(7, center=True).mean(), color="#405DE6", lw=2.2, label="7일 MA")
+    ax.plot(fidx, fvals, color=INK, lw=2.4, ls="--", label="예측 (+14일)")
+    ax.fill_between(fidx, fvals - 1.96 * resid_std, fvals + 1.96 * resid_std,
+                    color="#405DE6", alpha=0.15, label="95% 예측구간")
+    ax.set_ylabel("일일 도달")
+    ax.set_title("우리 계정 14일 예측 — 바이럴 이후에도 추세는 우상향", fontweight="bold")
+    ax.legend(frameon=False, fontsize=9, loc="upper left")
+    _style_dates(ax)
+    _save(fig, "11_account_forecast.png")
+
+    first_wk = float(s.iloc[:7].mean())
+    last_wk = float(s.iloc[-7:].mean())
+    return {
+        "acct_first_wk": first_wk,
+        "acct_last_wk": last_wk,
+        "acct_growth": (last_wk - first_wk) / first_wk * 100,
+        "acct_fc_end": float(fvals[-1]),
+        "acct_slope": slope,
+    }
+
+
 def render_all() -> dict:
     """모든 차트를 렌더링하고 슬라이드 내러티브용 수치를 반환."""
 
@@ -310,6 +433,9 @@ def render_all() -> dict:
     chart_weekly_profile(wide)
     growth = chart_growth(wide)
     slope = chart_forecast(wide)
+    sarima = chart_sarima_compare(wide)
+    chart_account_decomposition()
+    account = chart_account_forecast()
 
     # 연초(첫 2주) 대비 최근 2주 성장률
     first2 = wide.iloc[:14].mean()
@@ -328,6 +454,8 @@ def render_all() -> dict:
         "mom_30": mom_30,
         "focus": FOCUS,
         "focus_slope": slope,
+        **sarima,
+        **account,
     }
 
 
