@@ -174,3 +174,7 @@ hosts inject `$PORT`, which the container already honours.
 - **No shell access?** (e.g. Render free tier) Set `SEED_DEMO_ON_STARTUP=true`
   and the app seeds the same synthetic demo data on boot whenever the DB is
   empty — no shell needed. Already-populated databases are left untouched.
+- **Need history for a demo?** Instagram APIs only expose *current* values, so
+  a freshly tracked account has one point. `python -m scripts.backfill_history
+  --days 60` generates a plausible past that ends exactly at each account's
+  earliest real snapshot — present-day values stay real, charts have a story.
