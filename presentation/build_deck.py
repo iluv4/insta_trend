@@ -14,6 +14,7 @@
 
 from __future__ import annotations
 
+from itertools import count
 from pathlib import Path
 
 from pptx import Presentation
@@ -141,7 +142,7 @@ def agenda_slide(prs, page):
     s = _blank(prs)
     header(s, "목차", "Agenda")
     items = [
-        ("01", "분석 개요와 데이터", "질문 · 네이버 데이터랩 실데이터 · 한계"),
+        ("01", "문제 정의와 데이터", "마케터의 고민: 무엇이 떡상할까? · 네이버 데이터랩 실데이터"),
         ("02", "이론: 시계열의 구조", "확률과정, 구성요소, 가법/승법 분해 모형"),
         ("03", "이론: 정상성과 차분", "약정상성 3조건, 단위근, 1차 차분"),
         ("04", "이론: 자기상관과 ARIMA", "ACF/PACF, 백색잡음, AR·MA·ARIMA(p,d,q)"),
@@ -336,6 +337,7 @@ def code_slide(prs, page, title, eyebrow, blocks):
 # --------------------------------------------------------------------------- #
 def build():
     stats = render_all()
+    pg = count(1)
     g = stats["growth_ytd"]
     m = stats["mom_30"]
 
@@ -344,10 +346,21 @@ def build():
     prs.slide_height = Emu(int(SH))
 
     title_slide(prs, stats)
-    agenda_slide(prs, 1)
+    agenda_slide(prs, next(pg))
 
     bullets_slide(
-        prs, 2, "분석 개요", "01 · Overview",
+        prs, next(pg), "문제 정의 — 마케터의 고민", "01 · Problem",
+        lead="“다음 달에 어떤 해시태그가 떡상할까? 우리 계정 도달은 오를까, 꺾일까?” — 감으로는 답할 수 없는 질문들",
+        bullets=[
+            ("“어떤 태그가 떡상할까?”", "인기 순위는 '이미 큰 것'만 보여줌 — 순위에 올라온 시점은 대개 피크 직전이라 따라 들어가면 늦음"),
+            ("“우리 계정은 어떻게 될까?”", "도달·팔로워 그래프가 오르는 중인지, 꺾이는 중인지, 그냥 요일 출렁임인지 눈으로는 구분 불가"),
+            ("“왜 예측이 어렵나?”", "관심도 = 추세 + 계절성 + 이벤트 + 노이즈가 섞인 신호 — 분리하지 않으면 노이즈를 트렌드로 오독"),
+            ("이 발표의 제안", "시계열 분해로 신호를 성분별로 나누면 '진짜 상승'·'피크 통과'·'단순 요일 효과'를 데이터로 구분할 수 있다"),
+        ],
+    )
+
+    bullets_slide(
+        prs, next(pg), "분석 접근", "01 · Approach",
         lead="질문: 2026년 6월 11일 현재, 한국에서 어떤 해시태그가 뜨고 있고 — 어디로 가는가?",
         bullets=[
             ("왜 시계열인가", "한 시점의 인기 순위는 '지금 큰 것'만 보여줌 — 추세·계절성·모멘텀을 분리해야 '뜨는 것'과 '식는 것'을 구분"),
@@ -358,7 +371,7 @@ def build():
     )
 
     bullets_slide(
-        prs, 3, "데이터셋", "01 · Dataset",
+        prs, next(pg), "데이터셋", "01 · Dataset",
         lead=f"{stats['date_start']} ~ {stats['date_end']} · {stats['n_days']}일 · 일 단위 · 라이프스타일 해시태그 {stats['n_tags']}개",
         bullets=[
             ("수집", "네이버 데이터랩 검색어트렌드 API — 키워드그룹별 일별 ratio (그룹 예: 러닝=러닝+러닝크루)"),
@@ -372,7 +385,7 @@ def build():
     section_slide(prs, "Part 1 · Theory", "시계열 이론 — 수업에서 배운 도구들")
 
     theory_slide(
-        prs, 4, "시계열 데이터란", "02 · Stochastic process",
+        prs, next(pg), "시계열 데이터란", "02 · Stochastic process",
         concepts=[
             ("정의", "시간 순서로 관측된 확률변수의 열 — 확률과정 {X_t}의 한 실현(realization)"),
             ("핵심 성질: 시간 의존성", "관측치가 i.i.d.가 아님 — 오늘 값이 어제 값과 상관 → 고전 통계의 독립 가정이 무너짐"),
@@ -388,7 +401,7 @@ def build():
     )
 
     theory_slide(
-        prs, 5, "구성요소와 분해 모형", "02 · Decomposition",
+        prs, next(pg), "구성요소와 분해 모형", "02 · Decomposition",
         concepts=[
             ("4대 구성요소", "추세(T) 장기 방향 · 계절(S) 고정 주기 반복 · 순환(C) 비고정 장주기 · 불규칙(R) 잔차"),
             ("가법 모형", "변동 폭이 수준과 무관하게 일정할 때 — 성분을 더해서 관측을 설명"),
@@ -405,7 +418,7 @@ def build():
     )
 
     theory_slide(
-        prs, 6, "정상성과 차분", "03 · Stationarity",
+        prs, next(pg), "정상성과 차분", "03 · Stationarity",
         concepts=[
             ("약정상성 3조건", "① 평균이 시간에 불변 ② 분산이 유한·불변 ③ 자기공분산이 시차 k에만 의존"),
             ("왜 중요한가", "ARMA류 모형·ACF 해석·예측 이론이 모두 정상성 위에서 성립 — 비정상 계열은 가짜 상관(spurious) 위험"),
@@ -422,7 +435,7 @@ def build():
     )
 
     theory_slide(
-        prs, 7, "자기상관 · 백색잡음 · ARIMA", "04 · ACF & ARIMA",
+        prs, next(pg), "자기상관 · 백색잡음 · ARIMA", "04 · ACF & ARIMA",
         concepts=[
             ("ACF", "시차 k에서 자기 자신과의 상관 ρ(k) — 추세면 느리게 감쇠, 주기 s면 lag s마다 스파이크"),
             ("백색잡음", "평균 0, 상관 0인 순수 잡음 — 잔차가 백색잡음이면 모형이 구조를 다 흡수했다는 신호"),
@@ -444,36 +457,36 @@ def build():
     section_slide(prs, "Part 2 · Analysis", "실데이터 분석 — 이론을 데이터에 적용")
 
     chart_slide(
-        prs, 8, "원시 시계열 관찰", "05 · Raw signal", "01_overview.png",
+        prs, next(pg), "원시 시계열 관찰", "05 · Raw signal", "01_overview.png",
         ["9개 태그의 일별 관심도 원계열", "톱니 모양 = 주 7일 계절성", "#캠핑·#피크닉: 봄에 큰 산(계절 추세)", "#카페: 1월 고점 후 하락", "5월 중순 #등산 스파이크 = 연휴 외생 이벤트"],
     )
     chart_slide(
-        prs, 9, "이동평균 평활화", "05 · Smoothing", "02_moving_average.png",
+        prs, next(pg), "이동평균 평활화", "05 · Smoothing", "02_moving_average.png",
         [f"포커스: #{FOCUS} (6월 모멘텀 1위)", "회색 = 원계열(노이즈)", "7일 MA = 주간 주기 상쇄", "28일 MA = 장기 추세만", "1~5월 꾸준한 우상향 확인"],
     )
     chart_slide(
-        prs, 10, "정상성 진단과 차분", "05 · Stationarity", "03_stationarity.png",
+        prs, next(pg), "정상성 진단과 차분", "05 · Stationarity", "03_stationarity.png",
         ["위: 롤링 평균이 계속 상승 → 평균 비불변 = 비정상", "롤링 표준편차도 5월에 점프", "아래: 1차 차분 후 평균이 0에 고정", "차분으로 (약)정상성 확보 → ARIMA의 d=1에 해당"],
     )
     chart_slide(
-        prs, 11, "자기상관함수(ACF)", "05 · ACF", "04_acf.png",
+        prs, next(pg), "자기상관함수(ACF)", "05 · ACF", "04_acf.png",
         ["왼쪽(원계열): 천천히 감쇠 → 추세 지배 = 비정상 신호", "오른쪽(차분): lag 7·14·21 스파이크 → 주간 계절성", "점선 = ±1.96/√n 백색잡음 한계", "이론 그대로: 차분이 추세를 지우자 주기가 드러남"],
     )
     chart_slide(
-        prs, 12, "가법 분해", "06 · Decomposition", "05_decomposition.png",
+        prs, next(pg), "가법 분해", "06 · Decomposition", "05_decomposition.png",
         ["X = 추세 + 계절 + 잔차로 분리", "추세: 1월~5월 +60% 수준 상승", "계절: 주말 양(+), 주중 음(−) 규칙 진동", "잔차: 5월 연휴 스파이크 외엔 백색잡음에 가까움"],
     )
     chart_slide(
-        prs, 13, "주간 계절성 프로파일", "06 · Seasonality", "06_weekly_profile.png",
+        prs, next(pg), "주간 계절성 프로파일", "06 · Seasonality", "06_weekly_profile.png",
         ["요일 평균을 자기 평균=100으로 정규화", "#등산·#피크닉·#캠핑: 주말(토) 피크", "#다이어트: 월요일 피크 — '월요일 결심' 효과", "게시 타이밍 설계의 직접 근거"],
     )
     chart_slide(
-        prs, 14, "성장 모멘텀", "06 · Momentum", "07_growth.png",
+        prs, next(pg), "성장 모멘텀", "06 · Momentum", "07_growth.png",
         [f"1월 첫 주=100 지수화", f"연초 대비: #피크닉 +{g['피크닉']:.0f}% · #캠핑 +{g['캠핑']:.0f}% · #등산 +{g['등산']:.0f}%",
          f"최근 30일: #등산 +{m['등산']:.1f}% · #클라이밍 +{m['클라이밍']:.1f}% 만 상승", "봄 태그(피크닉·캠핑)는 5월 피크 통과 후 하락 전환"],
     )
     chart_slide(
-        prs, 15, "14일 예측", "06 · Forecast", "08_forecast.png",
+        prs, next(pg), "14일 예측", "06 · Forecast", "08_forecast.png",
         ["모형: 선형추세 + 요일 계절성 (최근 8주 적합)", "점선 = 6/11~6/24 예측 경로", "음영 = 95% 예측구간 (잔차 분산 기반)", "주말마다 솟는 요일 패턴까지 재현"],
     )
 
@@ -481,7 +494,7 @@ def build():
     section_slide(prs, "Conclusion", "그래서, 지금 뭘 써야 하나")
 
     cards_slide(
-        prs, 16, "2026-06-11 기준 트렌딩 해시태그", "07 · Now trending",
+        prs, next(pg), "2026-06-11 기준 트렌딩 해시태그", "07 · Now trending",
         cards=[
             ("📈 지금 상승 중 (최근 30일 모멘텀 +)", "#등산  #클라이밍",
              f"등산 +{m['등산']:.1f}%, 클라이밍 +{m['클라이밍']:.1f}% — 초여름에도 모멘텀 유지, 지금 올라탈 태그", PINK),
@@ -495,7 +508,7 @@ def build():
     )
 
     bullets_slide(
-        prs, 17, "콘텐츠 활용 전략", "07 · Action",
+        prs, next(pg), "콘텐츠 활용 전략", "07 · Action",
         lead="시계열 인사이트 → 게시물 전략: 무엇을(태그), 언제(요일), 어떻게(조합)",
         bullets=[
             ("주력 태그", "#등산 #클라이밍 중심 콘텐츠 — 상승 모멘텀 구간에 게시해 노출 탄력 확보"),
@@ -508,7 +521,7 @@ def build():
 
     # ---------------- 부록 ---------------- #
     code_slide(
-        prs, 18, "핵심 코드 ①  데이터 → 평활화 → 차분", "08 · Code",
+        prs, next(pg), "핵심 코드 ①  데이터 → 평활화 → 차분", "08 · Code",
         blocks=[
             ("tidy 패널을 날짜×태그 행렬로 (pandas pivot)",
              'wide = panel.pivot(index="date", columns="hashtag", values="ratio")'),
@@ -525,7 +538,7 @@ def build():
     )
 
     code_slide(
-        prs, 19, "핵심 코드 ②  ACF → 예측", "08 · Code",
+        prs, next(pg), "핵심 코드 ②  ACF → 예측", "08 · Code",
         blocks=[
             ("표본 ACF 직접 구현 — ρ(k) = γ(k)/γ(0)",
              "x = x - x.mean()\n"
@@ -542,7 +555,7 @@ def build():
     )
 
     bullets_slide(
-        prs, 20, "한계와 재현", "08 · Limitations",
+        prs, next(pg), "한계와 재현", "08 · Limitations",
         lead="정직한 캐비앗: 이 분석이 말할 수 있는 것과 없는 것",
         bullets=[
             ("프록시 한계", "네이버 검색량 ≠ 인스타그램 게시량 — '한국 사용자의 주제 관심도'의 대리지표로 해석해야 함"),
