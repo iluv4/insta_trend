@@ -20,9 +20,27 @@ logging.basicConfig(level=logging.INFO)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 
+def _seed_demo_if_empty() -> None:
+    """Populate synthetic demo data when the DB has no accounts yet."""
+    from sqlalchemy import select
+
+    from .database import SessionLocal
+    from .models import Account
+
+    with SessionLocal() as db:
+        if db.scalar(select(Account.id).limit(1)) is not None:
+            return
+    from scripts.seed_demo import seed
+
+    logging.getLogger("insta_monitor").info("empty DB — seeding demo data")
+    seed()
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    if settings.seed_demo_on_startup:
+        _seed_demo_if_empty()
     start_scheduler()
     try:
         yield

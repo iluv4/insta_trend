@@ -171,3 +171,6 @@ hosts inject `$PORT`, which the container already honours.
   of band) to avoid duplicate snapshots.
 - **Live data:** without `RAPIDAPI_KEY`, `POST /collect` returns 502; seed
   synthetic data with `python -m scripts.seed_demo` to explore the dashboard.
+- **No shell access?** (e.g. Render free tier) Set `SEED_DEMO_ON_STARTUP=true`
+  and the app seeds the same synthetic demo data on boot whenever the DB is
+  empty — no shell needed. Already-populated databases are left untouched.
