@@ -6,7 +6,7 @@
 
 ## 결과물
 
-- **`insta_trend_timeseries.pptx`** — 16:9, 24장 슬라이드 (한국어)
+- **`insta_trend_timeseries.pptx`** — 16:9, 25장 슬라이드 (한국어)
 - `assets/*.png` — 슬라이드에 삽입되는 분석 차트 8종
 - `naver_datalab_panel.csv` — 2026-06-11(KST) 수집한 일별 검색 관심도 실데이터
 
