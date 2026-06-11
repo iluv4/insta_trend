@@ -8,7 +8,8 @@
 ``insta_trend_timeseries.pptx`` 를 조립합니다.
 
 구성: 문제 정의 → 시계열 직관(겹친 신호·추세 제거·자기상관) → 실데이터
-분석 → 모델 비교 → 트렌딩 결론 + 우리 계정 시뮬레이션 + 핵심 코드.
+분석 → 모델 비교 → 트렌딩 결론 + 우리 계정 시뮬레이션 → AI 확장(LSTM·
+Transformer·RAG·LLM 에이전트 + 적용 아키텍처) → 핵심 코드.
 모던·미니멀 스타일(둥근 카드·헤어라인·단일 액센트). 폰트는 임베드하지
 않으며 한글 본문은 맑은 고딕을 요청합니다.
 """
@@ -187,10 +188,11 @@ def agenda_slide(prs, page):
         ("04", "모델 비교", "선형 베이스라인 vs SARIMA"),
         ("05", "결론: 지금 뜨는 태그", "2026-06-11 트렌딩 태그와 활용 전략"),
         ("06", "우리 계정은 어떻게 될까", "도달 분해 · 14일 예측으로 답하기"),
-        ("07", "부록: 코드 · 한계", "구현 요약과 데이터 캐비앗"),
+        ("07", "AI로 확장하기", "LSTM · Transformer · RAG · LLM 에이전트"),
+        ("08", "부록: 코드 · 한계", "구현 요약과 데이터 캐비앗"),
     ]
-    top = Inches(1.78)
-    row_h = Inches(0.7)
+    top = Inches(1.74)
+    row_h = Inches(0.62)
     for i, (num, t, sub) in enumerate(items):
         row = top + row_h * i
         # 번호 칩
@@ -430,6 +432,58 @@ def code_slide(prs, page, title, eyebrow, blocks):
     return s
 
 
+def pipeline_slide(prs, page, title, eyebrow, stages, feedback):
+    """가로 파이프라인 다이어그램: 단계 박스 + 화살표 + 피드백 루프."""
+
+    s = _blank(prs)
+    header(s, title, eyebrow)
+    n = len(stages)
+    margin = Inches(0.72)
+    total = Inches(11.9)
+    gap = Inches(0.34)
+    bw = (total - gap * (n - 1)) / n
+    by, bh = Inches(2.55), Inches(2.25)
+    for i, (num, name, sub, color) in enumerate(stages):
+        bx = margin + (bw + gap) * i
+        _round_rect(s, bx, by, bw, bh, LIGHT, line=BORDER, radius=0.08)
+        _rect(s, bx, by, bw, Inches(0.12), color)
+        _, tfn = _box(s, bx + Inches(0.2), by + Inches(0.26), bw - Inches(0.4), Inches(0.4))
+        rn = tfn.paragraphs[0].add_run()
+        rn.text = num
+        _set_font(rn, 15, bold=True, color=color, font=EN_FONT)
+        _, tft = _box(s, bx + Inches(0.2), by + Inches(0.74), bw - Inches(0.4), Inches(0.6))
+        rt = tft.paragraphs[0].add_run()
+        rt.text = name
+        _set_font(rt, 14, bold=True, color=INK)
+        _, tfs = _box(s, bx + Inches(0.2), by + Inches(1.3), bw - Inches(0.4), Inches(0.85))
+        rs = tfs.paragraphs[0].add_run()
+        rs.text = sub
+        _set_font(rs, 10.5, color=GREY)
+        if i < n - 1:
+            ax = bx + bw - Inches(0.02)
+            arr = s.shapes.add_shape(
+                MSO_SHAPE.RIGHT_ARROW, ax, by + bh / 2 - Inches(0.1), gap + Inches(0.04), Inches(0.2)
+            )
+            arr.fill.solid()
+            arr.fill.fore_color.rgb = FAINT
+            arr.line.fill.background()
+            arr.shadow.inherit = False
+    # 피드백 루프 밴드
+    fy = by + bh + Inches(0.45)
+    _round_rect(s, margin, fy, total, Inches(0.66), PINK_TINT, radius=0.3)
+    _, tff = _box(s, margin + Inches(0.3), fy, total - Inches(0.6), Inches(0.66))
+    tff.vertical_anchor = MSO_ANCHOR.MIDDLE
+    pf = tff.paragraphs[0]
+    rfl = pf.add_run()
+    rfl.text = "↺ 피드백 루프   "
+    _set_font(rfl, 13, bold=True, color=PINK)
+    rf = pf.add_run()
+    rf.text = feedback
+    _set_font(rf, 12.5, color=INK)
+    _footer(s, page)
+    return s
+
+
 # --------------------------------------------------------------------------- #
 def build():
     stats = render_all()
@@ -614,9 +668,81 @@ def build():
         ],
     )
 
+    # ---------------- Part 3: AI 확장 ---------------- #
+    section_slide(prs, "Part 3 · AI Extension", "통계를 넘어, AI로 확장하기", "04")
+
+    bullets_slide(
+        prs, next(pg), "왜 딥러닝·AI인가", "07 · Why AI",
+        lead="SARIMA까지는 '선형 + 정상성' 가정 위에 서 있다. 현실의 트렌드는 그보다 복잡하다.",
+        bullets=[
+            ("비선형 패턴", "바이럴은 지수적으로 터지고 사그라든다 — 선형 모델로는 그 곡선을 못 따라감"),
+            ("장기 기억", "‘작년 이맘때’ 같은 먼 과거 의존성 — ARIMA의 짧은 시차로는 포착 한계"),
+            ("다변량·교차효과", "태그끼리 서로 끌고 미는 관계, 날씨·이벤트 등 외생 변수까지 동시 학습 필요"),
+            ("정형 + 비정형", "수치 시계열뿐 아니라 캡션·댓글 텍스트까지 → 딥러닝·LLM의 영역"),
+        ],
+    )
+
+    intuition_slide(
+        prs, next(pg), "LSTM — 시퀀스를 기억하는 신경망", "07 · LSTM",
+        question="RNN은 긴 시퀀스에서 옛 정보를 잊는다. LSTM은 '게이트'로 무엇을 기억·망각할지 학습한다.",
+        analogy="기억의 수도꼭지 3개 — 버릴 것(forget), 새로 담을 것(input), 내보낼 것(output)을 그때그때 조절.",
+        cards=[
+            ("🧠", "RNN의 한계", "시점을 거치며 기울기가 소실 → 먼 과거의 신호가 흐려지는 '장기 의존성' 문제."),
+            ("🚰", "LSTM 게이트", "셀 상태 + forget·input·output 게이트로 장기 기억을 유지/갱신. (변형: GRU)"),
+            ("📲", "우리 적용", "9개 해시태그 × 외생 변수를 한 모델로 학습해 다변량 비선형 예측."),
+        ],
+        formula="cₜ = fₜ·cₜ₋₁ + iₜ·c̃ₜ    (게이트로 기억 갱신)",
+    )
+
+    cards_slide(
+        prs, next(pg), "LSTM을 넘어서는 시계열 딥러닝", "07 · Deep models",
+        lead="문제 규모·해석 요구·확률 예측 필요에 따라 골라 쓴다.",
+        cards=[
+            ("🔭 어텐션 기반", "Transformer · TFT", "장기 의존성과 다변량을 어텐션으로 포착. TFT는 변수 중요도까지 해석 가능.", PINK),
+            ("🧩 분해형", "N-BEATS · N-HiTS", "추세/계절을 신경망 블록으로 분해 — 통계 분해의 딥러닝 버전, 해석 용이.", PURPLE),
+            ("📈 자동화", "Prophet", "추세+계절+휴일을 자동 적합. 빠른 베이스라인으로 실무에서 인기.", INK),
+            ("🎲 확률 예측", "DeepAR", "점 예측이 아니라 분포를 예측 — 불확실성·리스크까지 함께 제공.", GREY),
+        ],
+    )
+
+    intuition_slide(
+        prs, next(pg), "RAG — 검색으로 보강한 LLM", "07 · RAG",
+        question="LLM은 똑똑하지만 '우리 데이터'와 '최신 트렌드'를 모른다. RAG는 검색해서 그 빈틈을 채운다.",
+        analogy="오픈북 시험 — 통째로 외우는 대신, 질문이 오면 관련 자료를 찾아 펴 보고 답한다.",
+        cards=[
+            ("🔎", "검색 (Retrieve)", "트렌드 리포트·과거 캠페인 성과를 벡터DB에 임베딩해 두고, 질문과 유사한 문서를 검색."),
+            ("➕", "보강 (Augment)", "검색한 근거를 프롬프트에 주입 — LLM이 '추측' 대신 '근거'로 답하게 함."),
+            ("✍️", "생성 (Generate)", "근거 기반으로 인사이트·콘텐츠 초안 생성 → 환각↓, 최신성·신뢰성↑."),
+        ],
+        formula="질문 → 검색(top-k 근거) → LLM(근거+질문) → 답변",
+    )
+
+    bullets_slide(
+        prs, next(pg), "LLM 에이전트 — 분석에서 실행까지", "07 · LLM agent",
+        lead="에이전트 = LLM + 도구 사용 + 자율 루프. 예측 결과를 받아 사람이 쓸 산출물로 바꾼다.",
+        bullets=[
+            ("도구 사용", "예측 모델·데이터랩 API를 직접 호출해 최신 수치를 가져옴 (function calling)"),
+            ("자동 인사이트", "‘#등산 상승, #피크닉 피크 통과’ 같은 결론을 자연어로 요약·설명"),
+            ("콘텐츠 생성", "추천 태그·게시 타이밍에 맞춘 캡션·기획안 초안 작성"),
+            ("사람 확인 게이트", "발행 전 사람이 검수 — 최신 LLM(예: Claude Opus 4.8)도 항상 사람 승인 후 실행"),
+        ],
+    )
+
+    pipeline_slide(
+        prs, next(pg), "적용 아키텍처 — 트렌드 인텔리전스 시스템", "07 · Architecture",
+        stages=[
+            ("01", "데이터 수집", "네이버 데이터랩 · 인스타그램 API · 일별 패널", PINK),
+            ("02", "시계열 예측", "SARIMA · LSTM · TFT 앙상블로 14일 전망", PURPLE),
+            ("03", "지식베이스 (RAG)", "벡터DB: 과거 트렌드 · 캠페인 성과 검색", INK),
+            ("04", "LLM 에이전트", "근거 기반 인사이트 · 콘텐츠 초안 생성", PINK),
+            ("05", "콘텐츠 추천", "태그 · 타이밍 · 조합 액션 제안", PURPLE),
+        ],
+        feedback="게시 성과를 다시 수집해 예측·추천 모델을 재학습 — 시스템이 스스로 정교해진다.",
+    )
+
     # ---------------- 부록 ---------------- #
     code_slide(
-        prs, next(pg), "핵심 코드 ①  데이터 → 평활화 → 차분", "07 · Code",
+        prs, next(pg), "핵심 코드 ①  데이터 → 평활화 → 차분", "08 · Code",
         blocks=[
             ("tidy 패널을 날짜×태그 행렬로 (pandas pivot)",
              'wide = panel.pivot(index="date", columns="hashtag", values="ratio")'),
@@ -633,7 +759,7 @@ def build():
     )
 
     code_slide(
-        prs, next(pg), "핵심 코드 ②  ACF → 예측", "07 · Code",
+        prs, next(pg), "핵심 코드 ②  ACF → 예측", "08 · Code",
         blocks=[
             ("표본 ACF 직접 구현 — ρ(k) = γ(k)/γ(0)",
              "x = x - x.mean()\n"
@@ -650,7 +776,7 @@ def build():
     )
 
     bullets_slide(
-        prs, next(pg), "한계와 재현", "07 · Limitations",
+        prs, next(pg), "한계와 재현", "08 · Limitations",
         lead="정직한 캐비앗: 이 분석이 말할 수 있는 것과 없는 것",
         bullets=[
             ("프록시 한계", "네이버 검색량 ≠ 인스타그램 게시량 — '한국 사용자의 주제 관심도'의 대리지표로 해석해야 함"),
