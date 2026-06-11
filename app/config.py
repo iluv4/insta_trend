@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     default_freq: str = "1D"
     default_forecast_horizon: int = 7
 
+    # --- Demo data ---
+    # When true, seed synthetic demo accounts on startup if the DB is empty.
+    # Useful on hosts without shell access (e.g. Render free tier).
+    seed_demo_on_startup: bool = False
+
     app_name: str = "Instagram Reference Monitor"
 
 
